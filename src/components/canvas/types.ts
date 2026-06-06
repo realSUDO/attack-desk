@@ -4,23 +4,41 @@ export type Tool =
   | "pen"
   | "rect"
   | "ellipse"
-  | "text"
   | "arrow"
+  | "text"
   | "eraser";
 
 export type FillPattern = "none" | "solid" | "hachure" | "cross-hatch" | "dots";
 
-export type ResizeHandle =
-  | "nw"
-  | "n"
-  | "ne"
-  | "e"
-  | "se"
-  | "s"
-  | "sw"
-  | "w";
+export const FILL_PATTERNS: ReadonlyArray<FillPattern> = [
+  "none",
+  "solid",
+  "hachure",
+  "cross-hatch",
+  "dots",
+];
 
-export type ShapeBase = {
+export const STROKE_OPTIONS: ReadonlyArray<string> = [
+  "#1e1b15",
+  "#ba1a1a",
+  "#536600",
+  "#1c1b1b",
+  "#444748",
+  "#fff8f1",
+];
+
+export const FILL_OPTIONS: ReadonlyArray<string> = [
+  "transparent",
+  "#fff8f1",
+  "#c9f308",
+  "#fbf3e7",
+  "#1e1b15",
+  "#ba1a1a",
+];
+
+export type Shape = RectShape | EllipseShape | ArrowShape | PenShape | TextShape;
+
+type BaseShape = {
   id: string;
   x: number;
   y: number;
@@ -33,37 +51,34 @@ export type ShapeBase = {
   strokeWidth: number;
 };
 
-export type PenShape = ShapeBase & {
-  type: "pen";
-  points: ReadonlyArray<readonly [number, number, number]>;
-  size: number;
-};
-
-export type RectShape = ShapeBase & {
+export type RectShape = BaseShape & {
   type: "rect";
   width: number;
   height: number;
 };
 
-export type EllipseShape = ShapeBase & {
+export type EllipseShape = BaseShape & {
   type: "ellipse";
   width: number;
   height: number;
 };
 
-export type TextShape = ShapeBase & {
-  type: "text";
-  text: string;
-  fontSize: number;
-  width?: number;
-};
-
-export type ArrowShape = ShapeBase & {
+export type ArrowShape = BaseShape & {
   type: "arrow";
   points: ReadonlyArray<readonly [number, number]>;
 };
 
-export type Shape = PenShape | RectShape | EllipseShape | TextShape | ArrowShape;
+export type PenShape = BaseShape & {
+  type: "pen";
+  size: number;
+  points: ReadonlyArray<readonly [number, number, number]>;
+};
+
+export type TextShape = BaseShape & {
+  type: "text";
+  text: string;
+  fontSize: number;
+};
 
 export type Camera = {
   x: number;
@@ -72,125 +87,74 @@ export type Camera = {
 };
 
 export type Scene = {
-  shapes: ReadonlyArray<Shape>;
   camera: Camera;
+  shapes: ReadonlyArray<Shape>;
 };
 
-export const DEFAULT_STROKE = "#1e1b15";
-export const DEFAULT_FILL = "#c9f308";
-export const DEFAULT_FILL_PATTERN: FillPattern = "none";
-export const DEFAULT_STROKE_WIDTH = 2;
-export const DEFAULT_PEN_SIZE = 4;
-export const DEFAULT_FONT_SIZE = 20;
+export const EMPTY_SCENE: Scene = {
+  camera: { x: 0, y: 0, zoom: 1 },
+  shapes: [],
+};
 
-export const STROKE_OPTIONS: ReadonlyArray<string> = [
-  "#1e1b15",
-  "#ba1a1a",
-  "#536600",
-  "#6875ff",
-  "#747878",
-];
+export type ToolDefaults = {
+  stroke: string;
+  fill: string;
+  fillPattern: FillPattern;
+  strokeWidth: number;
+  penSize: number;
+  fontSize: number;
+};
 
-export const FILL_OPTIONS: ReadonlyArray<string> = [
-  "transparent",
-  "#c9f308",
-  "#f5ede1",
-  "#1e1b15",
-  "#ba1a1a",
-  "#6875ff",
-];
+export const DEFAULT_TOOL_DEFAULTS: ToolDefaults = {
+  stroke: STROKE_OPTIONS[0]!,
+  fill: "transparent",
+  fillPattern: "none",
+  strokeWidth: 2,
+  penSize: 4,
+  fontSize: 20,
+};
 
-export const FILL_PATTERNS: ReadonlyArray<FillPattern> = [
-  "none",
-  "solid",
-  "hachure",
-  "cross-hatch",
-  "dots",
-];
-
-export const TOOLS: ReadonlyArray<{
-  id: Tool;
-  label: string;
-  icon: string;
-  hint: string;
-}> = [
-  { id: "select", label: "Select", icon: "arrow_selector_tool", hint: "V" },
-  { id: "pan", label: "Pan", icon: "pan_tool", hint: "H" },
-  { id: "pen", label: "Pen", icon: "ink_pen", hint: "P" },
-  { id: "rect", label: "Rectangle", icon: "rectangle", hint: "R" },
-  { id: "ellipse", label: "Ellipse", icon: "circle", hint: "C" },
-  { id: "text", label: "Text", icon: "title", hint: "T" },
-  { id: "arrow", label: "Arrow", icon: "arrow_outward", hint: "A" },
-  { id: "eraser", label: "Eraser", icon: "ink_eraser", hint: "E" },
-];
-
-export const HISTORY_LIMIT = 50;
-
+export const HISTORY_LIMIT = 100;
 export const SNAP_GRID_SIZE = 8;
-export const SNAP_THRESHOLD = 4;
+export const SNAP_THRESHOLD = 6;
+export const MIN_ZOOM = 0.2;
+export const MAX_ZOOM = 4;
 
-/**
- * Backwards-compatible scene migration. Old scenes stored in the DB
- * might not have `rotation`, `groupId`, `size` on pen shapes, etc.
- * This function backfills defaults so the rest of the code can rely
- * on the schema.
- */
-export function migrateShape(s: Shape): Shape {
-  switch (s.type) {
-    case "pen": {
-      const points: ReadonlyArray<readonly [number, number, number]> =
-        s.points.map((p) => [p[0], p[1], p[2] ?? 0.5]);
-      const size =
-        typeof (s as { size?: unknown }).size === "number"
-          ? (s as { size: number }).size
-          : s.strokeWidth * 1.5 || DEFAULT_PEN_SIZE;
-      return {
-        ...s,
-        rotation: s.rotation ?? 0,
-        groupId: s.groupId ?? null,
-        z: s.z ?? 0,
-        points,
-        size,
-      };
-    }
-    case "rect":
-    case "ellipse":
-      return {
-        ...s,
-        rotation: s.rotation ?? 0,
-        groupId: s.groupId ?? null,
-        z: s.z ?? 0,
-      };
-    case "text":
-      return {
-        ...s,
-        rotation: s.rotation ?? 0,
-        groupId: s.groupId ?? null,
-        z: s.z ?? 0,
-        width: s.width,
-      };
-    case "arrow": {
-      const points: ReadonlyArray<readonly [number, number]> = s.points.map(
-        (p) => [p[0], p[1]] as readonly [number, number],
-      );
-      return {
-        ...s,
-        rotation: s.rotation ?? 0,
-        groupId: s.groupId ?? null,
-        z: s.z ?? 0,
-        points,
-      };
-    }
-  }
+export function generateId(): string {
+  return Math.random().toString(36).slice(2, 11);
 }
 
-export function migrateScene(scene: Scene): Scene {
-  return {
-    camera: {
-      x: scene.camera.x,
-      y: scene.camera.y,
-      zoom: scene.camera.zoom,
-    },
-    shapes: scene.shapes.map(migrateShape),
+export function isShape(value: unknown): value is Shape {
+  if (!value || typeof value !== "object") return false;
+  const s = value as { type?: unknown };
+  return (
+    s.type === "rect" ||
+    s.type === "ellipse" ||
+    s.type === "arrow" ||
+    s.type === "pen" ||
+    s.type === "text"
+  );
+}
+
+export function parseScene(raw: unknown): Scene {
+  if (!raw || typeof raw !== "object") return EMPTY_SCENE;
+  const r = raw as { camera?: unknown; shapes?: unknown };
+  const camera: Camera = {
+    x:
+      r.camera && typeof r.camera === "object" && typeof (r.camera as Camera).x === "number"
+        ? (r.camera as Camera).x
+        : 0,
+    y:
+      r.camera && typeof r.camera === "object" && typeof (r.camera as Camera).y === "number"
+        ? (r.camera as Camera).y
+        : 0,
+    zoom:
+      r.camera && typeof r.camera === "object" && typeof (r.camera as Camera).zoom === "number"
+        ? (r.camera as Camera).zoom
+        : 1,
   };
+  const shapes: Array<Shape> = Array.isArray(r.shapes)
+    ? (r.shapes.filter(isShape) as Array<Shape>)
+    : [];
+  return { camera, shapes };
 }

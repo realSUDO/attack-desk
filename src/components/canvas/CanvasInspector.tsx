@@ -10,12 +10,15 @@ import {
   STROKE_OPTIONS,
   type FillPattern,
   type Shape,
+  type ToolDefaults,
 } from "./types";
 
 type Props = {
   canvasTitle: string;
   onTitleChange: (v: string) => void;
   selection: ReadonlyArray<Shape>;
+  toolDefaults: ToolDefaults;
+  onUpdateToolDefaults: (patch: Partial<ToolDefaults>) => void;
   onUpdateSelected: (patch: Partial<Shape>) => void;
   onDeleteSelected: () => void;
   linkedMissions: ReadonlyArray<{ id: string; title: string }>;
@@ -54,6 +57,8 @@ export function CanvasInspector({
   canvasTitle,
   onTitleChange,
   selection,
+  toolDefaults,
+  onUpdateToolDefaults,
   onUpdateSelected,
   onDeleteSelected,
   linkedMissions,
@@ -84,7 +89,7 @@ export function CanvasInspector({
   );
 
   return (
-    <aside className="border-outline-variant bg-surface flex w-80 flex-col border-l z-30">
+    <aside className="border-outline-variant bg-surface z-30 flex w-80 flex-col border-l">
       <div className="border-outline-variant border-b">
         <Link
           href="/canvas"
@@ -106,13 +111,18 @@ export function CanvasInspector({
         />
       </div>
 
+      {!any && (
+        <ToolDefaultsPanel
+          toolDefaults={toolDefaults}
+          onUpdateToolDefaults={onUpdateToolDefaults}
+        />
+      )}
+
       {any && (
         <div className="border-outline-variant p-lg border-b">
           <div className="mb-md flex items-center justify-between">
             <span className="font-label-sm text-on-surface-variant uppercase">
-              {multi
-                ? `${selection.length} selected`
-                : (single?.type ?? "shape")}
+              {multi ? `${selection.length} selected` : (single?.type ?? "shape")}
             </span>
             <div className="flex items-center gap-xs">
               <button
@@ -134,7 +144,6 @@ export function CanvasInspector({
             </div>
           </div>
 
-          {/* Order / Group operations */}
           {single && (
             <div className="mb-md">
               <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
@@ -187,144 +196,57 @@ export function CanvasInspector({
             </div>
           )}
 
-          {/* Stroke */}
-          {(single?.type === "rect" ||
-            single?.type === "ellipse" ||
-            single?.type === "pen" ||
-            single?.type === "arrow" ||
-            multi) && (
-            <div className="mb-md">
-              <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
-                Stroke
-              </span>
-              <div className="flex flex-wrap gap-sm">
-                {STROKE_OPTIONS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => onUpdateSelected({ stroke: color })}
-                    aria-label={`Stroke ${color}`}
-                    className={`h-7 w-7 border ${
-                      allSameStroke && single?.stroke === color
-                        ? "border-primary outline outline-2 outline-primary"
-                        : "border-outline"
-                    }`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-            </div>
+          {any && (
+            <StrokePalette
+              value={
+                allSameStroke && single ? single.stroke : null
+              }
+              onChange={(c) => onUpdateSelected({ stroke: c })}
+            />
           )}
 
-          {/* Fill */}
-          {(single?.type === "rect" || single?.type === "ellipse" || multi) && (
-            <>
-              <div className="mb-md">
-                <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
-                  Fill
-                </span>
-                <div className="flex flex-wrap gap-sm">
-                  {FILL_OPTIONS.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => onUpdateSelected({ fill: color })}
-                      aria-label={`Fill ${color}`}
-                      className={`h-7 w-7 border ${
-                        allSameFill && single?.fill === color
-                          ? "border-primary outline outline-2 outline-primary"
-                          : "border-outline"
-                      }`}
-                      style={{
-                        backgroundColor: color === "transparent" ? "#ffffff" : color,
-                        backgroundImage:
-                          color === "transparent"
-                            ? "linear-gradient(45deg, #c4c7c7 25%, transparent 25%), linear-gradient(-45deg, #c4c7c7 25%, transparent 25%)"
-                            : undefined,
-                        backgroundSize: color === "transparent" ? "8px 8px" : undefined,
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
+          {any &&
+            (single?.type === "rect" ||
+              single?.type === "ellipse" ||
+              multi) && (
+              <>
+                <FillPalette
+                  value={allSameFill && single ? single.fill : null}
+                  onChange={(c) => onUpdateSelected({ fill: c })}
+                />
+                <PatternGrid
+                  value={
+                    allSameFillPattern && single ? single.fillPattern : null
+                  }
+                  onChange={(p) => onUpdateSelected({ fillPattern: p })}
+                />
+              </>
+            )}
 
-              <div className="mb-md">
-                <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
-                  Pattern
-                </span>
-                <div className="grid grid-cols-5 gap-sm">
-                  {FILL_PATTERNS.map((p) => {
-                    const active = allSameFillPattern && single?.fillPattern === p;
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => onUpdateSelected({ fillPattern: p })}
-                        title={FILL_PATTERN_LABELS[p]}
-                        className={`flex h-9 items-center justify-center border ${
-                          active
-                            ? "border-primary text-primary"
-                            : "border-outline-variant text-on-surface-variant hover:text-primary"
-                        }`}
-                      >
-                        <MaterialIcon name={FILL_PATTERN_ICONS[p]} size={16} />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Stroke width — applies to rect/ellipse/pen/arrow/multi */}
-          {(single?.type === "rect" ||
-            single?.type === "ellipse" ||
-            single?.type === "pen" ||
-            single?.type === "arrow" ||
-            multi) && (
-            <div className="mb-md">
-              <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
-                Stroke Width
-              </span>
-              <input
-                type="range"
+          {any &&
+            (single?.type === "rect" ||
+              single?.type === "ellipse" ||
+              single?.type === "arrow" ||
+              multi) && (
+              <Slider
+                label="Stroke Width"
                 min={1}
                 max={12}
-                value={allSameStrokeWidth ? single?.strokeWidth ?? 2 : 2}
-                onChange={(e) =>
-                  onUpdateSelected({ strokeWidth: Number(e.target.value) })
-                }
-                className="w-full"
+                value={allSameStrokeWidth && single ? single.strokeWidth : null}
+                onChange={(v) => onUpdateSelected({ strokeWidth: v })}
               />
-              <span className="font-metadata text-metadata text-on-surface-variant block text-center">
-                {allSameStrokeWidth ? `${single?.strokeWidth}px` : "Mixed"}
-              </span>
-            </div>
-          )}
+            )}
 
-          {/* Pen size — pen only */}
           {single?.type === "pen" && (
-            <div className="mb-md">
-              <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
-                Pen Size
-              </span>
-              <input
-                type="range"
-                min={1}
-                max={24}
-                value={single.size}
-                onChange={(e) =>
-                  onUpdateSelected({ size: Number(e.target.value) })
-                }
-                className="w-full"
-              />
-              <span className="font-metadata text-metadata text-on-surface-variant block text-center">
-                {single.size}px
-              </span>
-            </div>
+            <Slider
+              label="Pen Size"
+              min={1}
+              max={24}
+              value={single.size}
+              onChange={(v) => onUpdateSelected({ size: v })}
+            />
           )}
 
-          {/* Text-specific */}
           {single?.type === "text" && (
             <>
               <div className="mb-md">
@@ -338,24 +260,13 @@ export function CanvasInspector({
                   className="font-body-md border-outline focus:border-primary w-full border bg-transparent p-sm focus:outline-hidden"
                 />
               </div>
-              <div>
-                <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
-                  Size
-                </span>
-                <input
-                  type="range"
-                  min={12}
-                  max={72}
-                  value={single.fontSize}
-                  onChange={(e) =>
-                    onUpdateSelected({ fontSize: Number(e.target.value) })
-                  }
-                  className="w-full"
-                />
-                <span className="font-metadata text-metadata text-on-surface-variant block text-center">
-                  {single.fontSize}px
-                </span>
-              </div>
+              <Slider
+                label="Size"
+                min={12}
+                max={72}
+                value={single.fontSize}
+                onChange={(v) => onUpdateSelected({ fontSize: v })}
+              />
             </>
           )}
         </div>
@@ -408,11 +319,6 @@ export function CanvasInspector({
                     />
                     <span className="font-label-md">Deadline: {d.title}</span>
                   </div>
-                  <MaterialIcon
-                    name="close"
-                    size={18}
-                    className="text-on-surface-variant"
-                  />
                 </div>
               ))}
             </>
@@ -444,6 +350,202 @@ export function CanvasInspector({
         </button>
       </div>
     </aside>
+  );
+}
+
+function ToolDefaultsPanel({
+  toolDefaults,
+  onUpdateToolDefaults,
+}: {
+  toolDefaults: ToolDefaults;
+  onUpdateToolDefaults: (patch: Partial<ToolDefaults>) => void;
+}) {
+  return (
+    <div className="border-outline-variant p-lg border-b">
+      <div className="mb-md flex items-center justify-between">
+        <span className="font-label-sm text-on-surface-variant uppercase">
+          Tool Defaults
+        </span>
+        <MaterialIcon name="edit" size={14} className="text-on-surface-variant" />
+      </div>
+      <p className="font-metadata text-metadata text-on-surface-variant mb-md">
+        These apply to the next shape you draw.
+      </p>
+      <StrokePalette
+        value={toolDefaults.stroke}
+        onChange={(c) => onUpdateToolDefaults({ stroke: c })}
+      />
+      <FillPalette
+        value={toolDefaults.fill}
+        onChange={(c) => onUpdateToolDefaults({ fill: c })}
+      />
+      <PatternGrid
+        value={toolDefaults.fillPattern}
+        onChange={(p) => onUpdateToolDefaults({ fillPattern: p })}
+      />
+      <Slider
+        label="Stroke Width"
+        min={1}
+        max={12}
+        value={toolDefaults.strokeWidth}
+        onChange={(v) => onUpdateToolDefaults({ strokeWidth: v })}
+      />
+      <Slider
+        label="Pen Size"
+        min={1}
+        max={24}
+        value={toolDefaults.penSize}
+        onChange={(v) => onUpdateToolDefaults({ penSize: v })}
+      />
+      <Slider
+        label="Text Size"
+        min={12}
+        max={72}
+        value={toolDefaults.fontSize}
+        onChange={(v) => onUpdateToolDefaults({ fontSize: v })}
+      />
+    </div>
+  );
+}
+
+function StrokePalette({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (c: string) => void;
+}) {
+  return (
+    <div className="mb-md">
+      <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
+        Stroke
+      </span>
+      <div className="flex flex-wrap gap-sm">
+        {STROKE_OPTIONS.map((color) => (
+          <button
+            key={color}
+            type="button"
+            onClick={() => onChange(color)}
+            aria-label={`Stroke ${color}`}
+            className={`h-7 w-7 border ${
+              value === color
+                ? "border-primary outline outline-2 outline-primary"
+                : "border-outline"
+            }`}
+            style={{ backgroundColor: color }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FillPalette({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (c: string) => void;
+}) {
+  return (
+    <div className="mb-md">
+      <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
+        Fill
+      </span>
+      <div className="flex flex-wrap gap-sm">
+        {FILL_OPTIONS.map((color) => (
+          <button
+            key={color}
+            type="button"
+            onClick={() => onChange(color)}
+            aria-label={`Fill ${color}`}
+            className={`h-7 w-7 border ${
+              value === color
+                ? "border-primary outline outline-2 outline-primary"
+                : "border-outline"
+            }`}
+            style={{
+              backgroundColor: color === "transparent" ? "#ffffff" : color,
+              backgroundImage:
+                color === "transparent"
+                  ? "linear-gradient(45deg, #c4c7c7 25%, transparent 25%), linear-gradient(-45deg, #c4c7c7 25%, transparent 25%)"
+                  : undefined,
+              backgroundSize: color === "transparent" ? "8px 8px" : undefined,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PatternGrid({
+  value,
+  onChange,
+}: {
+  value: FillPattern | null;
+  onChange: (p: FillPattern) => void;
+}) {
+  return (
+    <div className="mb-md">
+      <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
+        Pattern
+      </span>
+      <div className="grid grid-cols-5 gap-sm">
+        {FILL_PATTERNS.map((p) => {
+          const active = value === p;
+          return (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onChange(p)}
+              title={FILL_PATTERN_LABELS[p]}
+              className={`flex h-9 items-center justify-center border ${
+                active
+                  ? "border-primary text-primary"
+                  : "border-outline-variant text-on-surface-variant hover:text-primary"
+              }`}
+            >
+              <MaterialIcon name={FILL_PATTERN_ICONS[p]} size={16} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Slider({
+  label,
+  min,
+  max,
+  value,
+  onChange,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  value: number | null;
+  onChange: (v: number) => void;
+}) {
+  const display = value ?? Math.round((min + max) / 2);
+  return (
+    <div className="mb-md">
+      <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
+        {label}
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={display}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full"
+      />
+      <span className="font-metadata text-metadata text-on-surface-variant block text-center">
+        {value === null ? "Mixed" : `${display}px`}
+      </span>
+    </div>
   );
 }
 

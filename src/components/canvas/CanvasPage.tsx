@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import {
   deleteCanvasAction,
   saveCanvasAction,
@@ -18,17 +19,18 @@ import {
 } from "@/actions/canvas.actions";
 
 import { CanvasInspector } from "./CanvasInspector";
-import { CanvasSurface } from "./CanvasSurface";
 import { CanvasToolbar } from "./CanvasToolbar";
 import { ContextMenu } from "./ContextMenu";
+import { KonvaCanvas } from "./KonvaCanvas";
 import { LinkMissionModal } from "./LinkMissionModal";
-import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
+import { useScene } from "./store";
 import {
   type Scene,
   type Shape,
   type Tool,
+  type ToolDefaults,
+  DEFAULT_TOOL_DEFAULTS,
 } from "./types";
-import { useScene } from "./store";
 
 type LinkedRef = {
   missions: ReadonlyArray<{ id: string; title: string }>;
@@ -54,12 +56,10 @@ const TOOL_KEYBINDS: Record<string, Tool> = {
   v: "select",
   h: "pan",
   p: "pen",
-  d: "pen",
   r: "rect",
-  c: "ellipse",
   o: "ellipse",
-  t: "text",
   a: "arrow",
+  t: "text",
   e: "eraser",
 };
 
@@ -71,7 +71,7 @@ export function CanvasPage({
   availableMissions,
 }: Props) {
   const router = useRouter();
-  const sceneApi = useScene(initialScene);
+  const api = useScene(initialScene);
   const [title, setTitle] = useState(initialTitle);
   const [tool, setTool] = useState<Tool>("select");
   const [selectedIds, setSelectedIds] = useState<ReadonlyArray<string>>([]);
@@ -82,43 +82,36 @@ export function CanvasPage({
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [isDeleting, startDelete] = useTransition();
-  const [snapToGrid, setSnapToGrid] = useState(true);
-  const [snapToShapes, setSnapToShapes] = useState(true);
+  const [toolDefaults, setToolDefaults] = useState<ToolDefaults>(DEFAULT_TOOL_DEFAULTS);
   const [contextMenu, setContextMenu] = useState<
-    | {
-        sx: number;
-        sy: number;
-        wx: number;
-        wy: number;
-        ids: ReadonlyArray<string>;
-      }
+    | { x: number; y: number; ids: ReadonlyArray<string> }
     | null
   >(null);
-  const surfaceRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const selectedShapes = useMemo<ReadonlyArray<Shape>>(() => {
     const set = new Set(selectedIds);
-    return sceneApi.scene.shapes.filter((s) => set.has(s.id));
-  }, [sceneApi.scene.shapes, selectedIds]);
+    return api.scene.shapes.filter((s) => set.has(s.id));
+  }, [api.scene.shapes, selectedIds]);
 
   const isDirty = useMemo<boolean>(
-    () => sceneApi.scene !== lastSavedScene || title !== lastSavedTitle,
-    [sceneApi.scene, title, lastSavedScene, lastSavedTitle],
+    () => api.scene !== lastSavedScene || title !== lastSavedTitle,
+    [api.scene, title, lastSavedScene, lastSavedTitle],
   );
 
   const handleSave = useCallback(() => {
     startSave(async () => {
       const formData = new FormData();
       formData.set("title", title);
-      formData.set("data", JSON.stringify(sceneApi.scene));
+      formData.set("data", JSON.stringify(api.scene));
       const result = await saveCanvasAction(canvasId, formData);
       if (result.success) {
-        setLastSavedScene(sceneApi.scene);
+        setLastSavedScene(api.scene);
         setLastSavedTitle(title);
         setLastSavedAt(new Date());
       }
     });
-  }, [canvasId, sceneApi.scene, title]);
+  }, [api.scene, canvasId, title]);
 
   useEffect(() => {
     if (!isDirty) return;
@@ -128,42 +121,34 @@ export function CanvasPage({
     return () => clearTimeout(t);
   }, [isDirty, handleSave]);
 
-  const handleRequestTextEdit = useCallback((id: string) => {
-    if (id === "") {
-      setEditingTextId(null);
-      return;
-    }
-    setEditingTextId(id);
-  }, []);
-
-  // Commit/cancel text edit based on whether it has content.
-  useEffect(() => {
-    if (editingTextId === null) return;
-    // We need to know whether the text shape's text is empty to decide
-    // to delete or keep.
-  }, [editingTextId]);
-
-  // When a text edit finishes, validate and clean up.
-  const finalizeTextEdit = useCallback(() => {
-    if (!editingTextId) return;
-    const shape = sceneApi.scene.shapes.find((s) => s.id === editingTextId);
-    if (shape && shape.type === "text") {
-      const trimmed = shape.text.trim();
-      if (trimmed === "") {
-        sceneApi.removeShapes([editingTextId]);
-      } else if (shape.text !== trimmed) {
-        sceneApi.updateShape(editingTextId, { text: trimmed });
+  const handleRequestTextEdit = useCallback(
+    (id: string) => {
+      if (id === "") {
+        if (editingTextId) {
+          const shape = api.scene.shapes.find((s) => s.id === editingTextId);
+          if (shape?.type === "text") {
+            const trimmed = shape.text.trim();
+            if (trimmed === "") {
+              api.removeShapes([editingTextId]);
+            } else if (shape.text !== trimmed) {
+              api.updateShape(editingTextId, { text: trimmed });
+            }
+          }
+        }
+        setEditingTextId(null);
+        return;
       }
-    }
-    setEditingTextId(null);
-  }, [editingTextId, sceneApi]);
+      setEditingTextId(id);
+    },
+    [api, editingTextId],
+  );
 
-  useEffect(() => {
-    if (editingTextId === null) return;
-    // Listen for blur on any text editor — but since we use a ref-based
-    // editor, we can't easily listen for blur. Instead, the editor itself
-    // calls onCommit, which we forward to setEditingTextId(null).
-  }, [editingTextId]);
+  const updateTextLive = useCallback(
+    (id: string, text: string) => {
+      api.updateShape(id, { text });
+    },
+    [api],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -174,9 +159,7 @@ export function CanvasPage({
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
       if (inTextEditor) {
-        if (e.key === "Escape") {
-          (target as HTMLElement).blur();
-        }
+        if (e.key === "Escape") (target as HTMLElement).blur();
         return;
       }
 
@@ -190,7 +173,7 @@ export function CanvasPage({
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedIds.length > 0) {
           e.preventDefault();
-          sceneApi.removeShapes(selectedIds);
+          api.removeShapes(selectedIds);
           setSelectedIds([]);
         }
         return;
@@ -198,7 +181,7 @@ export function CanvasPage({
 
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && k === "z") {
         e.preventDefault();
-        sceneApi.undo();
+        api.undo();
         return;
       }
 
@@ -207,7 +190,7 @@ export function CanvasPage({
         ((e.metaKey || e.ctrlKey) && k === "y")
       ) {
         e.preventDefault();
-        sceneApi.redo();
+        api.redo();
         return;
       }
 
@@ -219,28 +202,46 @@ export function CanvasPage({
 
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && k === "a") {
         e.preventDefault();
-        setSelectedIds(sceneApi.scene.shapes.map((s) => s.id));
+        setSelectedIds(api.scene.shapes.map((s) => s.id));
         return;
       }
 
       if ((e.metaKey || e.ctrlKey) && k === "d" && selectedIds.length > 0) {
         e.preventDefault();
-        sceneApi.duplicateShapes(selectedIds, 8);
+        const newIds = api.duplicateShapes(selectedIds, 8);
+        setSelectedIds(newIds);
         return;
       }
 
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && k === "g" && selectedIds.length > 0) {
         e.preventDefault();
-        const first = sceneApi.scene.shapes.find((s) => s.id === selectedIds[0]);
-        if (first?.groupId) {
-          sceneApi.ungroupShapes(first.groupId);
-        }
+        const first = api.scene.shapes.find((s) => s.id === selectedIds[0]);
+        if (first?.groupId) api.ungroupShapes(first.groupId);
         return;
       }
 
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && k === "g" && selectedIds.length > 0) {
         e.preventDefault();
-        sceneApi.groupShapes(selectedIds);
+        const newGroup = api.groupShapes(selectedIds);
+        if (newGroup) {
+          // selection remains the same; shapes are now grouped.
+        }
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && k === "]") {
+        if (selectedIds.length > 0) {
+          e.preventDefault();
+          api.bringToFront(selectedIds[0]!);
+        }
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && k === "[") {
+        if (selectedIds.length > 0) {
+          e.preventDefault();
+          api.sendToBack(selectedIds[0]!);
+        }
         return;
       }
 
@@ -261,29 +262,33 @@ export function CanvasPage({
         else if (e.key === "ArrowDown") dy = step;
         if (dx !== 0 || dy !== 0) {
           e.preventDefault();
-          sceneApi.translateShapes(selectedIds, dx, dy);
+          api.translateShapes(selectedIds, dx, dy);
         }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleSave, sceneApi, selectedIds, tool]);
+  }, [api, handleSave, selectedIds, tool]);
 
   const handleUpdateSelected = useCallback(
     (patch: Partial<Shape>) => {
       for (const id of selectedIds) {
-        sceneApi.updateShape(id, patch);
+        api.updateShape(id, patch);
       }
     },
-    [sceneApi, selectedIds],
+    [api, selectedIds],
   );
+
+  const handleUpdateToolDefaults = useCallback((patch: Partial<ToolDefaults>) => {
+    setToolDefaults((prev) => ({ ...prev, ...patch }));
+  }, []);
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedIds.length > 0) {
-      sceneApi.removeShapes(selectedIds);
+      api.removeShapes(selectedIds);
       setSelectedIds([]);
     }
-  }, [sceneApi, selectedIds]);
+  }, [api, selectedIds]);
 
   const handleDeleteCanvas = useCallback(() => {
     if (typeof window !== "undefined") {
@@ -292,9 +297,7 @@ export function CanvasPage({
     }
     startDelete(async () => {
       const result = await deleteCanvasAction(canvasId);
-      if (result.success) {
-        router.push("/canvas");
-      }
+      if (result.success) router.push("/canvas");
     });
   }, [canvasId, router]);
 
@@ -308,20 +311,20 @@ export function CanvasPage({
   );
 
   const handleShowContextMenu = useCallback(
-    (point: { sx: number; sy: number; wx: number; wy: number }, ids: ReadonlyArray<string>) => {
+    (
+      point: { sx: number; sy: number; wx: number; wy: number },
+      ids: ReadonlyArray<string>,
+    ) => {
       if (ids.length === 0) return;
       setSelectedIds(ids);
-      setContextMenu({ ...point, ids });
+      setContextMenu({ x: point.sx, y: point.sy, ids });
     },
     [],
   );
 
-  // Finalize text edit when editingTextId changes to null.
-  useEffect(() => {
-    if (editingTextId === null) {
-      // No-op; finalize is called from the editor's onBlur.
-    }
-  }, [editingTextId]);
+  const editingShape = editingTextId
+    ? api.scene.shapes.find((s) => s.id === editingTextId)
+    : null;
 
   return (
     <div className="bg-background flex h-screen overflow-hidden">
@@ -330,10 +333,10 @@ export function CanvasPage({
         <CanvasToolbar
           tool={tool}
           onTool={setTool}
-          canUndo={sceneApi.canUndo}
-          canRedo={sceneApi.canRedo}
-          onUndo={sceneApi.undo}
-          onRedo={sceneApi.redo}
+          canUndo={api.canUndo}
+          canRedo={api.canRedo}
+          onUndo={api.undo}
+          onRedo={api.redo}
           isSaving={isSaving}
           isDirty={isDirty}
           onSave={handleSave}
@@ -341,30 +344,34 @@ export function CanvasPage({
 
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div className="relative min-h-0 min-w-0 flex-1">
-            <CanvasSurface
-              shapes={sceneApi.scene.shapes}
-              camera={sceneApi.scene.camera}
+            <KonvaCanvas
+              api={api}
               tool={tool}
               selectedIds={selectedIds}
-              editingTextId={editingTextId}
-              snapToGrid={snapToGrid}
-              snapToShapes={snapToShapes}
-              onCamera={sceneApi.setCamera}
-              onCommitShape={sceneApi.addShape}
-              onUpdateShape={sceneApi.updateShape}
-              onRemoveShapes={sceneApi.removeShapes}
-              onTranslate={sceneApi.translateShapes}
-              onSelectionChange={setSelectedIds}
-              onRequestTextEdit={(id) => {
-                if (id === "") {
-                  finalizeTextEdit();
+              setSelectedIds={(ids, additive) => {
+                if (additive) {
+                  setSelectedIds((prev) => Array.from(new Set([...prev, ...ids])));
                 } else {
-                  handleRequestTextEdit(id);
+                  setSelectedIds(ids);
                 }
               }}
-              onShowContextMenu={handleShowContextMenu}
-              surfaceRef={surfaceRef}
+              toolDefaults={toolDefaults}
+              onToolChange={setTool}
+              onRequestTextEdit={handleRequestTextEdit}
+              onContextMenuEvent={handleShowContextMenu}
+              containerRef={containerRef}
             />
+
+            {editingShape?.type === "text" && (
+              <TextEditorOverlay
+                shape={editingShape}
+                zoom={api.scene.camera.zoom}
+                cameraX={api.scene.camera.x}
+                cameraY={api.scene.camera.y}
+                onChange={(text) => updateTextLive(editingShape.id, text)}
+                onCommit={() => handleRequestTextEdit("")}
+              />
+            )}
 
             <div className="absolute bottom-lg left-lg z-40">
               <div className="border-outline-variant bg-surface-container-lowest flex items-center gap-sm border px-md py-sm">
@@ -385,15 +392,8 @@ export function CanvasPage({
             </div>
 
             <ZoomControls
-              zoom={sceneApi.scene.camera.zoom}
-              onZoom={(z) => sceneApi.setCamera({ zoom: z })}
-            />
-
-            <SnapTogglePills
-              snapToGrid={snapToGrid}
-              snapToShapes={snapToShapes}
-              onToggleGrid={() => setSnapToGrid((v) => !v)}
-              onToggleShapes={() => setSnapToShapes((v) => !v)}
+              zoom={api.scene.camera.zoom}
+              onZoom={(z) => api.setCamera({ zoom: z })}
             />
           </div>
 
@@ -401,6 +401,8 @@ export function CanvasPage({
             canvasTitle={title}
             onTitleChange={setTitle}
             selection={selectedShapes}
+            toolDefaults={toolDefaults}
+            onUpdateToolDefaults={handleUpdateToolDefaults}
             onUpdateSelected={handleUpdateSelected}
             onDeleteSelected={handleDeleteSelected}
             linkedMissions={linked.missions}
@@ -410,21 +412,27 @@ export function CanvasPage({
             onDeleteCanvas={handleDeleteCanvas}
             onOpenLinkModal={() => setLinkModalOpen(true)}
             onUnlinkMission={handleUnlinkMission}
-            onBringToFront={(id) => sceneApi.bringToFront(id)}
-            onSendToBack={(id) => sceneApi.sendToBack(id)}
-            onBringForward={(id) => sceneApi.bringForward(id)}
-            onSendBackward={(id) => sceneApi.sendBackward(id)}
-            onGroup={() => sceneApi.groupShapes(selectedIds)}
-            onUngroup={() => {
-              const first = sceneApi.scene.shapes.find((s) => s.id === selectedIds[0]);
-              if (first?.groupId) sceneApi.ungroupShapes(first.groupId);
+            onBringToFront={(id) => api.bringToFront(id)}
+            onSendToBack={(id) => api.sendToBack(id)}
+            onBringForward={(id) => api.bringForward(id)}
+            onSendBackward={(id) => api.sendBackward(id)}
+            onGroup={() => {
+              api.groupShapes(selectedIds);
             }}
-            onDuplicate={() => sceneApi.duplicateShapes(selectedIds, 8)}
+            onUngroup={() => {
+              const first = api.scene.shapes.find((s) => s.id === selectedIds[0]);
+              if (first?.groupId) api.ungroupShapes(first.groupId);
+            }}
+            onDuplicate={() => {
+              const newIds = api.duplicateShapes(selectedIds, 8);
+              setSelectedIds(newIds);
+            }}
           />
         </div>
       </main>
 
       <LinkMissionModal
+        key={linkModalOpen ? "open" : "closed"}
         canvasId={canvasId}
         open={linkModalOpen}
         onClose={() => setLinkModalOpen(false)}
@@ -433,27 +441,30 @@ export function CanvasPage({
 
       {contextMenu && (
         <ContextMenu
-          x={contextMenu.sx}
-          y={contextMenu.sy}
-          ids={contextMenu.ids}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenuItems({
+            ids: contextMenu.ids,
+            shapes: api.scene.shapes,
+            onBringToFront: (id) => api.bringToFront(id),
+            onBringForward: (id) => api.bringForward(id),
+            onSendBackward: (id) => api.sendBackward(id),
+            onSendToBack: (id) => api.sendToBack(id),
+            onGroup: () => api.groupShapes(contextMenu.ids),
+            onUngroup: () => {
+              const first = api.scene.shapes.find((s) => s.id === contextMenu.ids[0]);
+              if (first?.groupId) api.ungroupShapes(first.groupId);
+            },
+            onDuplicate: () => {
+              const newIds = api.duplicateShapes(contextMenu.ids, 8);
+              setSelectedIds(newIds);
+            },
+            onDelete: () => {
+              api.removeShapes(contextMenu.ids);
+              setSelectedIds([]);
+            },
+          })}
           onClose={() => setContextMenu(null)}
-          onBringToFront={(id) => sceneApi.bringToFront(id)}
-          onSendToBack={(id) => sceneApi.sendToBack(id)}
-          onBringForward={(id) => sceneApi.bringForward(id)}
-          onSendBackward={(id) => sceneApi.sendBackward(id)}
-          onGroup={() => sceneApi.groupShapes(selectedIds)}
-          onUngroup={() => {
-            const first = sceneApi.scene.shapes.find((s) => s.id === selectedIds[0]);
-            if (first?.groupId) sceneApi.ungroupShapes(first.groupId);
-          }}
-          onDuplicate={() => sceneApi.duplicateShapes(selectedIds, 8)}
-          onDelete={() => {
-            sceneApi.removeShapes(selectedIds);
-            setSelectedIds([]);
-          }}
-          isGrouped={
-            !!sceneApi.scene.shapes.find((s) => s.id === selectedIds[0])?.groupId
-          }
         />
       )}
     </div>
@@ -492,41 +503,169 @@ function ZoomControls({
   );
 }
 
-function SnapTogglePills({
-  snapToGrid,
-  snapToShapes,
-  onToggleGrid,
-  onToggleShapes,
+function TextEditorOverlay({
+  shape,
+  zoom,
+  cameraX,
+  cameraY,
+  onChange,
+  onCommit,
 }: {
-  snapToGrid: boolean;
-  snapToShapes: boolean;
-  onToggleGrid: () => void;
-  onToggleShapes: () => void;
+  shape: { id: string; x: number; y: number; text: string; fontSize: number };
+  zoom: number;
+  cameraX: number;
+  cameraY: number;
+  onChange: (text: string) => void;
+  onCommit: () => void;
 }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.focus();
+      ref.current.setSelectionRange(shape.text.length, shape.text.length);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shape.id]);
+  useEffect(() => {
+    if (!ref.current) return;
+    ref.current.style.height = "auto";
+    ref.current.style.height = `${ref.current.scrollHeight}px`;
+  }, [shape.text]);
   return (
-    <div className="absolute right-lg bottom-lg z-40 flex gap-sm">
-      <button
-        type="button"
-        onClick={onToggleGrid}
-        title="Toggle snap to grid (8px)"
-        className={`border-outline-variant bg-surface flex h-9 items-center gap-xs border px-sm font-label-sm uppercase ${
-          snapToGrid ? "text-primary" : "text-on-surface-variant"
-        }`}
-      >
-        <MaterialIcon name="grid_4x4" size={16} />
-        Grid
-      </button>
-      <button
-        type="button"
-        onClick={onToggleShapes}
-        title="Toggle snap to other shapes"
-        className={`border-outline-variant bg-surface flex h-9 items-center gap-xs border px-sm font-label-sm uppercase ${
-          snapToShapes ? "text-primary" : "text-on-surface-variant"
-        }`}
-      >
-        <MaterialIcon name="align_horizontal_left" size={16} />
-        Align
-      </button>
-    </div>
+    <textarea
+      ref={ref}
+      defaultValue={shape.text}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onCommit}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onCommit();
+        } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          onCommit();
+        }
+      }}
+      placeholder="Type something…"
+      className="text-headline-md border-primary absolute resize-none border-2 focus:outline-hidden"
+      style={{
+        left: shape.x * zoom + cameraX,
+        top: shape.y * zoom + cameraY - shape.fontSize * zoom * 0.2,
+        fontSize: `${shape.fontSize * zoom}px`,
+        lineHeight: 1.2,
+        minWidth: "120px",
+        color: "#1e1b15",
+        fontFamily: "var(--font-hanken-grotesk), sans-serif",
+        fontWeight: 500,
+        background: "rgba(255, 248, 241, 0.96)",
+        padding: 0,
+      }}
+    />
   );
+}
+
+function contextMenuItems({
+  ids,
+  shapes,
+  onBringToFront,
+  onBringForward,
+  onSendBackward,
+  onSendToBack,
+  onGroup,
+  onUngroup,
+  onDuplicate,
+  onDelete,
+}: {
+  ids: ReadonlyArray<string>;
+  shapes: ReadonlyArray<Shape>;
+  onBringToFront: (id: string) => void;
+  onBringForward: (id: string) => void;
+  onSendBackward: (id: string) => void;
+  onSendToBack: (id: string) => void;
+  onGroup: () => void;
+  onUngroup: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}): ReadonlyArray<
+  { kind: "item"; item: { label: string; icon: string; shortcut?: string; onClick: () => void; disabled?: boolean; destructive?: boolean } } | { kind: "divider" }
+> {
+  const first = shapes.find((s) => s.id === ids[0]);
+  const isGrouped = !!first?.groupId;
+  return [
+    {
+      kind: "item",
+      item: {
+        label: "Bring to Front",
+        icon: "flip_to_front",
+        shortcut: "⌘]",
+        onClick: () => onBringToFront(ids[0]!),
+      },
+    },
+    {
+      kind: "item",
+      item: {
+        label: "Bring Forward",
+        icon: "arrow_upward",
+        onClick: () => onBringForward(ids[0]!),
+      },
+    },
+    {
+      kind: "item",
+      item: {
+        label: "Send Backward",
+        icon: "arrow_downward",
+        onClick: () => onSendBackward(ids[0]!),
+      },
+    },
+    {
+      kind: "item",
+      item: {
+        label: "Send to Back",
+        icon: "flip_to_back",
+        shortcut: "⌘[",
+        onClick: () => onSendToBack(ids[0]!),
+      },
+    },
+    { kind: "divider" },
+    {
+      kind: "item",
+      item: {
+        label: "Group",
+        icon: "group_work",
+        shortcut: "⌘G",
+        onClick: onGroup,
+        disabled: ids.length < 2,
+      },
+    },
+    {
+      kind: "item",
+      item: {
+        label: "Ungroup",
+        icon: "group_off",
+        shortcut: "⌘⇧G",
+        onClick: onUngroup,
+        disabled: !isGrouped,
+      },
+    },
+    { kind: "divider" },
+    {
+      kind: "item",
+      item: {
+        label: "Duplicate",
+        icon: "content_copy",
+        shortcut: "⌘D",
+        onClick: onDuplicate,
+      },
+    },
+    {
+      kind: "item",
+      item: {
+        label: "Delete",
+        icon: "delete",
+        shortcut: "⌫",
+        onClick: onDelete,
+        destructive: true,
+      },
+    },
+  ];
 }
