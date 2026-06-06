@@ -250,6 +250,7 @@ export function CanvasSurface({
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+      e.preventDefault();
       const surface = surfaceRef.current;
       if (!surface) return;
       if (editingTextId) return;
@@ -397,12 +398,12 @@ export function CanvasSurface({
       onPointerMove={onPointerMoveHover}
       onDoubleClick={onDoubleClick}
       onContextMenu={(e) => e.preventDefault()}
-      className="canvas-grid relative flex-1 overflow-auto"
+      className="canvas-grid relative h-full min-h-0 w-full min-w-0 touch-none overflow-hidden select-none"
       style={{
         cursor,
         backgroundColor: "var(--color-background, #fff8f1)",
         backgroundImage:
-          "linear-gradient(to right, rgba(116, 120, 120, 0.1) 1px, transparent 1px), linear-gradient(to bottom, rgba(116, 120, 120, 0.1) 1px, transparent 1px)",
+          "linear-gradient(to right, rgba(116, 120, 120, 0.22) 1px, transparent 1px), linear-gradient(to bottom, rgba(116, 120, 120, 0.22) 1px, transparent 1px)",
         backgroundSize: `${24 * camera.zoom}px ${24 * camera.zoom}px`,
         backgroundPosition: `${camera.x}px ${camera.y}px`,
       }}
@@ -591,7 +592,13 @@ function ShapeRenderer({
       const d = getPenOutlinePath(shape.points, shape.size);
       return (
         <g opacity={opacity}>
-          {d && <path d={d} fill={shape.stroke} />}
+          {d && (
+            <path
+              d={d}
+              fill={shape.stroke}
+              transform={`translate(${shape.x} ${shape.y})`}
+            />
+          )}
           {hoverOutline}
         </g>
       );
@@ -667,6 +674,7 @@ function ShapeRenderer({
             strokeWidth={shape.strokeWidth}
             fill="none"
             strokeLinecap="round"
+            transform={`translate(${shape.x} ${shape.y})`}
           />
           <path
             d={head}
@@ -675,6 +683,7 @@ function ShapeRenderer({
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
+            transform={`translate(${shape.x} ${shape.y})`}
           />
           {hoverOutline}
         </g>

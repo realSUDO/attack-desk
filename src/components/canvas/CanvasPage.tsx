@@ -326,7 +326,7 @@ export function CanvasPage({
   return (
     <div className="bg-background flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="ml-20 flex flex-1 flex-col">
+      <main className="ml-20 flex min-h-0 min-w-0 flex-1 flex-col">
         <CanvasToolbar
           tool={tool}
           onTool={setTool}
@@ -339,8 +339,8 @@ export function CanvasPage({
           onSave={handleSave}
         />
 
-        <div className="flex flex-1 overflow-hidden">
-          <div className="relative flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div className="relative min-h-0 min-w-0 flex-1">
             <CanvasSurface
               shapes={sceneApi.scene.shapes}
               camera={sceneApi.scene.camera}
