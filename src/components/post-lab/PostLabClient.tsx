@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 
@@ -19,14 +19,100 @@ type Props = {
   columns: ReadonlyArray<Column>;
 };
 
+const COLUMN_WIDTH = 630;
+const COLUMN_GAP = 24;
+const SLIDE_STEP = COLUMN_WIDTH + COLUMN_GAP;
+
 export function PostLabClient({ columns }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const scrollRef = useRef<HTMLElement>(null);
+  const dragState = useRef<{
+    startX: number;
+    startScrollLeft: number;
+    pointerId: number | null;
+  } | null>(null);
+  const didDragRef = useRef(false);
+
   const selected =
     columns.flatMap((c) => c.posts).find((p) => p.id === selectedId) ?? null;
 
   const open = isCreating || selected !== null;
   const mode: "create" | "edit" = isCreating ? "create" : "edit";
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    if (!scrollRef.current) return;
+    dragState.current = {
+      startX: e.clientX,
+      startScrollLeft: scrollRef.current.scrollLeft,
+      pointerId: e.pointerType === "mouse" ? null : e.pointerId,
+    };
+    didDragRef.current = false;
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0 && e.deltaX === 0) return;
+      e.preventDefault();
+      const raw = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      el.scrollLeft += raw * 0.6;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const state = dragState.current;
+      if (!state || !scrollRef.current) return;
+      const dx = e.clientX - state.startX;
+      if (Math.abs(dx) > 4) {
+        didDragRef.current = true;
+        if (!isDragging) setIsDragging(true);
+      }
+      scrollRef.current.scrollLeft = state.startScrollLeft - dx;
+    };
+    const onUp = (e: PointerEvent) => {
+      const state = dragState.current;
+      if (!state) return;
+      if (
+        state.pointerId !== null &&
+        e.pointerId !== state.pointerId
+      ) {
+        return;
+      }
+      dragState.current = null;
+      setIsDragging(false);
+    };
+    const onCancel = () => {
+      dragState.current = null;
+      didDragRef.current = false;
+      setIsDragging(false);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onCancel);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onCancel);
+    };
+  }, [isDragging]);
+
+  const handleCardSelect = (id: string) => {
+    if (didDragRef.current) {
+      didDragRef.current = false;
+      return;
+    }
+    setIsCreating(false);
+    setSelectedId(id);
+  };
 
   return (
     <>
@@ -67,7 +153,34 @@ export function PostLabClient({ columns }: Props) {
       </header>
 
       {/* Main Content: Kanban Board */}
-      <main className="bg-background ml-20 mt-16 flex h-[calc(100vh-64px)] flex-1 overflow-x-auto overflow-y-hidden p-lg">
+      <main
+        ref={scrollRef}
+        onPointerDown={handlePointerDown}
+        className={`board-scroll bg-background ml-20 mt-16 flex h-[calc(100vh-64px)] flex-1 overflow-x-auto overflow-y-hidden p-lg ${
+          isDragging ? "cursor-grabbing select-none" : "cursor-grab"
+        }`}
+      >
+        <button
+          type="button"
+          aria-label="Previous column"
+          onClick={() => {
+            scrollRef.current?.scrollBy({ left: -SLIDE_STEP, behavior: "smooth" });
+          }}
+          className="border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary fixed top-1/2 left-20 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center border bg-background transition-colors"
+        >
+          <MaterialIcon name="chevron_left" size={20} />
+        </button>
+        <button
+          type="button"
+          aria-label="Next column"
+          onClick={() => {
+            scrollRef.current?.scrollBy({ left: SLIDE_STEP, behavior: "smooth" });
+          }}
+          className="border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary fixed top-1/2 right-0 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center border bg-background transition-colors"
+        >
+          <MaterialIcon name="chevron_right" size={20} />
+        </button>
+
         <div className="flex h-full min-w-max gap-lg pb-lg">
           {columns.map((col) => {
             const isPosted = col.status === "POSTED";
@@ -77,7 +190,7 @@ export function PostLabClient({ columns }: Props) {
             return (
               <div
                 key={col.status}
-                className="board-column bg-surface-container-low border-outline-variant flex h-full flex-col border"
+                className="board-column bg-surface-container-low border-outline-variant flex h-full w-[630px] shrink-0 flex-col border scroll-snap-align-start"
               >
                 <div className="bg-surface-container border-outline-variant flex items-center justify-between border-b p-md">
                   <span className="mono-label font-label-md">{title}</span>
@@ -103,10 +216,7 @@ export function PostLabClient({ columns }: Props) {
                       <PostCard
                         key={p.id}
                         post={p}
-                        onSelect={(id) => {
-                          setIsCreating(false);
-                          setSelectedId(id);
-                        }}
+                        onSelect={handleCardSelect}
                       />
                     ))
                   )}
@@ -128,8 +238,21 @@ export function PostLabClient({ columns }: Props) {
       />
 
       <style jsx global>{`
+        .board-scroll {
+          scroll-snap-type: x proximity;
+          scroll-padding-left: 0;
+          scrollbar-width: thin;
+        }
+        .board-scroll::-webkit-scrollbar {
+          height: 6px;
+        }
+        .board-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .board-scroll::-webkit-scrollbar-thumb {
+          background: #c4c7c7;
+        }
         .board-column {
-          min-width: 320px;
           min-height: calc(100vh - 160px);
         }
         .mono-label {
