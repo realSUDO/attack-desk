@@ -13,9 +13,30 @@ export type MissionFilters = {
   canvasId?: string;
 };
 
+export const missionWithRelationsInclude = {
+  deadline: { select: { id: true, title: true, dueDate: true } },
+  canvas: { select: { id: true, title: true } },
+} satisfies Prisma.MissionInclude;
+
+export type MissionWithRelations = Prisma.MissionGetPayload<{
+  include: typeof missionWithRelationsInclude;
+}>;
+
 export function getMissions(filters: MissionFilters = {}) {
   return prisma.mission.findMany({
     where: filters,
+    orderBy: [
+      { status: "asc" },
+      { order: "asc" },
+      { createdAt: "desc" },
+    ],
+  });
+}
+
+export function getMissionsWithRelations(filters: MissionFilters = {}) {
+  return prisma.mission.findMany({
+    where: filters,
+    include: missionWithRelationsInclude,
     orderBy: [
       { status: "asc" },
       { order: "asc" },
