@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 
@@ -11,12 +10,15 @@ import {
   STROKE_OPTIONS,
   type FillPattern,
   type Shape,
+  type TextAlign,
+  type Tool,
   type ToolDefaults,
 } from "./types";
 
 type Props = {
   canvasTitle: string;
   onTitleChange: (v: string) => void;
+  tool: Tool;
   selection: ReadonlyArray<Shape>;
   toolDefaults: ToolDefaults;
   onUpdateToolDefaults: (patch: Partial<ToolDefaults>) => void;
@@ -55,11 +57,37 @@ const FILL_PATTERN_ICONS: Record<FillPattern, string> = {
   dots: "blur_on",
 };
 
+const TOOL_DEFAULT_LABELS: Record<Tool, string> = {
+  select: "Defaults",
+  pan: "Defaults",
+  pen: "Pen Defaults",
+  rect: "Rectangle Defaults",
+  ellipse: "Ellipse Defaults",
+  arrow: "Arrow Defaults",
+  text: "Text Defaults",
+  eraser: "Defaults",
+};
+
+const TOOL_DEFAULT_HINTS: Record<Tool, string> = {
+  select: "Pick a draw tool to see its options.",
+  pan: "Pick a draw tool to see its options.",
+  pen: "Pen draws freehand strokes in the stroke color.",
+  rect: "Rectangles support stroke, fill, and patterns.",
+  ellipse: "Ellipses support stroke, fill, and patterns.",
+  arrow: "Arrows draw with the stroke color and a minimum 2px width.",
+  text: "Text uses the stroke color and the size below.",
+  eraser: "Click shapes to delete them. No defaults to set.",
+};
+
 type Tab = "defaults" | "selection";
+
+const isDrawTool = (t: Tool): boolean =>
+  t === "pen" || t === "rect" || t === "ellipse" || t === "arrow" || t === "text";
 
 export function CanvasInspector({
   canvasTitle,
   onTitleChange,
+  tool,
   selection,
   toolDefaults,
   onUpdateToolDefaults,
@@ -84,7 +112,10 @@ export function CanvasInspector({
   const single = selection.length === 1 ? selection[0]! : null;
   const multi = selection.length > 1;
   const any = selection.length > 0;
-  const [tab, setTab] = useState<Tab>(any ? "selection" : "defaults");
+  // Tab is derived from context: draw tools always show Defaults; otherwise
+  // show Selection when something is selected.
+  const activeTab: Tab = isDrawTool(tool) || !any ? "defaults" : "selection";
+  const showSelectionTab = !isDrawTool(tool);
 
   const allSameStroke = selection.every((s) => s.stroke === selection[0]?.stroke);
   const allSameFill = selection.every((s) => s.fill === selection[0]?.fill);
@@ -120,27 +151,28 @@ export function CanvasInspector({
 
       <div className="border-outline-variant flex border-b">
         <TabButton
-          label="Defaults"
-          active={tab === "defaults"}
-          onClick={() => setTab("defaults")}
+          label={TOOL_DEFAULT_LABELS[tool]}
+          active={activeTab === "defaults"}
         />
-        <TabButton
-          label={any ? (multi ? `Selection (${selection.length})` : "Selection") : "Selection"}
-          active={tab === "selection"}
-          disabled={!any}
-          onClick={() => setTab("selection")}
-        />
+        {showSelectionTab && (
+          <TabButton
+            label={any ? (multi ? `Selection (${selection.length})` : "Selection") : "Selection"}
+            active={activeTab === "selection"}
+            disabled={!any}
+          />
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === "defaults" && (
+        {activeTab === "defaults" && (
           <ToolDefaultsPanel
+            tool={tool}
             toolDefaults={toolDefaults}
             onUpdateToolDefaults={onUpdateToolDefaults}
           />
         )}
 
-        {tab === "selection" && any && (
+        {activeTab === "selection" && any && (
           <SelectionPanel
             selection={selection}
             single={single}
@@ -162,7 +194,7 @@ export function CanvasInspector({
           />
         )}
 
-        {tab === "selection" && !any && (
+        {activeTab === "selection" && !any && (
           <div className="text-on-surface-variant font-body-md p-lg text-center">
             Select a shape to edit its properties.
           </div>
@@ -259,13 +291,13 @@ function TabButton({
   label: string;
   active: boolean;
   disabled?: boolean;
-  onClick: () => void;
+  onClick?: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || !onClick}
       className={`font-label-sm flex-1 border-b-2 px-md py-sm uppercase transition-colors ${
         active
           ? "border-primary text-primary"
@@ -317,6 +349,24 @@ function SelectionPanel({
   const batch = multi;
   const onChange = batch ? onUpdateSelectedBatch : onUpdateSelected;
 
+  const types = new Set(selection.map((s) => s.type));
+  const allFillable = [...types].every((t) => t === "rect" || t === "ellipse");
+  const allArrowLike = [...types].every(
+    (t) => t === "rect" || t === "ellipse" || t === "arrow",
+  );
+
+  const hasFill = single?.type === "rect" || single?.type === "ellipse" || (multi && allFillable);
+  const hasPattern = hasFill;
+  const hasStrokeWidth =
+    single?.type === "rect" ||
+    single?.type === "ellipse" ||
+    single?.type === "arrow" ||
+    (multi && allArrowLike);
+  const hasPenSize = !!single && single.type === "pen" && !multi;
+  const hasText = !!single && single.type === "text" && !multi;
+
+  const anyOption = hasFill || hasPattern || hasStrokeWidth || hasPenSize || hasText;
+
   return (
     <div className="border-outline-variant p-lg border-b">
       <div className="mb-md flex items-center justify-between">
@@ -343,7 +393,14 @@ function SelectionPanel({
         </div>
       </div>
 
-      {single && (
+      {single?.type === "text" && (
+        <TextAlignControl
+          value={single.align ?? "left"}
+          onChange={(align) => onUpdateSelected({ align })}
+        />
+      )}
+
+      {single && single.type !== "text" && (
         <div className="mb-md">
           <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
             Order
@@ -395,30 +452,28 @@ function SelectionPanel({
         </div>
       )}
 
-      <StrokePalette
-        value={allSameStroke && single ? single.stroke : null}
-        onChange={(c) => onChange({ stroke: c })}
-      />
-
-      {(single?.type === "rect" ||
-        single?.type === "ellipse" ||
-        multi) && (
-        <>
-          <FillPalette
-            value={allSameFill && single ? single.fill : null}
-            onChange={(c) => onChange({ fill: c })}
-          />
-          <PatternGrid
-            value={allSameFillPattern && single ? single.fillPattern : null}
-            onChange={(p) => onChange({ fillPattern: p })}
-          />
-        </>
+      {allSameStroke && (single || multi) && selection[0] && (
+        <StrokePalette
+          value={selection[0].stroke}
+          onChange={(c) => onChange({ stroke: c })}
+        />
       )}
 
-      {(single?.type === "rect" ||
-        single?.type === "ellipse" ||
-        single?.type === "arrow" ||
-        multi) && (
+      {hasFill && (
+        <FillPalette
+          value={allSameFill && single ? single.fill : null}
+          onChange={(c) => onChange({ fill: c })}
+        />
+      )}
+
+      {hasPattern && (
+        <PatternGrid
+          value={allSameFillPattern && single ? single.fillPattern : null}
+          onChange={(p) => onChange({ fillPattern: p })}
+        />
+      )}
+
+      {hasStrokeWidth && (
         <Slider
           label="Stroke Width"
           min={1}
@@ -428,7 +483,7 @@ function SelectionPanel({
         />
       )}
 
-      {single?.type === "pen" && (
+      {hasPenSize && single?.type === "pen" && (
         <Slider
           label="Pen Size"
           min={1}
@@ -438,7 +493,7 @@ function SelectionPanel({
         />
       )}
 
-      {single?.type === "text" && !multi && (
+      {hasText && single?.type === "text" && (
         <>
           <div className="mb-md">
             <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
@@ -460,61 +515,148 @@ function SelectionPanel({
           />
         </>
       )}
+
+      {!anyOption && !allSameStroke && (
+        <div className="text-on-surface-variant font-body-md py-md text-center">
+          No editable options for this selection.
+        </div>
+      )}
     </div>
   );
 }
 
 function ToolDefaultsPanel({
+  tool,
   toolDefaults,
   onUpdateToolDefaults,
 }: {
+  tool: Tool;
   toolDefaults: ToolDefaults;
   onUpdateToolDefaults: (patch: Partial<ToolDefaults>) => void;
 }) {
+  const hasStroke = tool === "pen" || tool === "rect" || tool === "ellipse" || tool === "arrow" || tool === "text";
+  const hasFill = tool === "rect" || tool === "ellipse";
+  const hasPattern = tool === "rect" || tool === "ellipse";
+  const hasStrokeWidth = tool === "rect" || tool === "ellipse" || tool === "arrow";
+  const hasPenSize = tool === "pen";
+  const hasTextSize = tool === "text";
+  const anyOption =
+    hasStroke ||
+    hasFill ||
+    hasPattern ||
+    hasStrokeWidth ||
+    hasPenSize ||
+    hasTextSize;
+
   return (
     <div className="border-outline-variant p-lg border-b">
       <div className="mb-md flex items-center justify-between">
         <span className="font-label-sm text-on-surface-variant uppercase">
-          Tool Defaults
+          {TOOL_DEFAULT_LABELS[tool]}
         </span>
         <MaterialIcon name="edit" size={14} className="text-on-surface-variant" />
       </div>
       <p className="font-metadata text-metadata text-on-surface-variant mb-md">
-        These apply to the next shape you draw.
+        {TOOL_DEFAULT_HINTS[tool]}
       </p>
-      <StrokePalette
-        value={toolDefaults.stroke}
-        onChange={(c) => onUpdateToolDefaults({ stroke: c })}
-      />
-      <FillPalette
-        value={toolDefaults.fill}
-        onChange={(c) => onUpdateToolDefaults({ fill: c })}
-      />
-      <PatternGrid
-        value={toolDefaults.fillPattern}
-        onChange={(p) => onUpdateToolDefaults({ fillPattern: p })}
-      />
-      <Slider
-        label="Stroke Width"
-        min={1}
-        max={12}
-        value={toolDefaults.strokeWidth}
-        onChange={(v) => onUpdateToolDefaults({ strokeWidth: v })}
-      />
-      <Slider
-        label="Pen Size"
-        min={1}
-        max={24}
-        value={toolDefaults.penSize}
-        onChange={(v) => onUpdateToolDefaults({ penSize: v })}
-      />
-      <Slider
-        label="Text Size"
-        min={12}
-        max={72}
-        value={toolDefaults.fontSize}
-        onChange={(v) => onUpdateToolDefaults({ fontSize: v })}
-      />
+      {!anyOption && (
+        <div className="text-on-surface-variant font-body-md py-md text-center">
+          No defaults for this tool.
+        </div>
+      )}
+      {hasStroke && (
+        <StrokePalette
+          value={toolDefaults.stroke}
+          onChange={(c) => onUpdateToolDefaults({ stroke: c })}
+        />
+      )}
+      {hasFill && (
+        <FillPalette
+          value={toolDefaults.fill}
+          onChange={(c) => onUpdateToolDefaults({ fill: c })}
+        />
+      )}
+      {hasPattern && (
+        <PatternGrid
+          value={toolDefaults.fillPattern}
+          onChange={(p) => onUpdateToolDefaults({ fillPattern: p })}
+        />
+      )}
+      {hasStrokeWidth && (
+        <Slider
+          label="Stroke Width"
+          min={1}
+          max={12}
+          value={toolDefaults.strokeWidth}
+          onChange={(v) => onUpdateToolDefaults({ strokeWidth: v })}
+        />
+      )}
+      {hasPenSize && (
+        <Slider
+          label="Pen Size"
+          min={1}
+          max={24}
+          value={toolDefaults.penSize}
+          onChange={(v) => onUpdateToolDefaults({ penSize: v })}
+        />
+      )}
+      {hasTextSize && (
+        <>
+          <Slider
+            label="Text Size"
+            min={12}
+            max={72}
+            value={toolDefaults.fontSize}
+            onChange={(v) => onUpdateToolDefaults({ fontSize: v })}
+          />
+          <TextAlignControl
+            value={toolDefaults.textAlign}
+            onChange={(textAlign) => onUpdateToolDefaults({ textAlign })}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function TextAlignControl({
+  value,
+  onChange,
+}: {
+  value: TextAlign;
+  onChange: (value: TextAlign) => void;
+}) {
+  const options: ReadonlyArray<{ value: TextAlign; icon: string; label: string }> =
+    [
+      { value: "left", icon: "format_align_left", label: "Align left" },
+      { value: "center", icon: "format_align_center", label: "Align center" },
+      { value: "right", icon: "format_align_right", label: "Align right" },
+    ];
+
+  return (
+    <div className="mb-md">
+      <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
+        Alignment
+      </span>
+      <div className="grid grid-cols-3 gap-xs">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            title={option.label}
+            aria-label={option.label}
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+            className={`flex h-9 items-center justify-center border ${
+              value === option.value
+                ? "border-primary bg-primary text-on-primary"
+                : "border-outline-variant hover:bg-surface-container-highest"
+            }`}
+          >
+            <MaterialIcon name={option.icon} size={18} />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

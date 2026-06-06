@@ -147,7 +147,9 @@ export function CanvasList({ canvases }: Props) {
                     {c.postIdeaCount} idea{c.postIdeaCount !== 1 ? "s" : ""}
                   </span>
                 )}
-                <span className="ml-auto">{formatRelative(c.updatedAt)}</span>
+                <span suppressHydrationWarning className="ml-auto">
+                  {formatRelative(c.updatedAt)}
+                </span>
               </div>
             </Link>
           ))}

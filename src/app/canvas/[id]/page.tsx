@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getCanvasById } from "@/db/queries/canvases";
 import { getMissionsWithRelations } from "@/db/queries/missions";
 import { CanvasPage } from "@/components/canvas/CanvasPage";
-import { EMPTY_SCENE, parseScene, type Scene } from "@/components/canvas/types";
+import { parseScene, type Scene } from "@/components/canvas/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,27 +20,6 @@ export default async function CanvasIdPage({ params }: { params: Params }) {
   }
 
   if (!canvas) {
-    if (
-      id === "sample-canvas-1" ||
-      id === "sample-canvas-2" ||
-      id === "sample-canvas-3"
-    ) {
-      return (
-        <CanvasPage
-          canvasId={id}
-          initialTitle={
-            id === "sample-canvas-1"
-              ? "Architectural Flow V1"
-              : id === "sample-canvas-2"
-                ? "Content Roadmap 2026"
-                : "User Interview Synthesis"
-          }
-          initialScene={EMPTY_SCENE}
-          linked={{ missions: [], deadlines: [] }}
-          availableMissions={[]}
-        />
-      );
-    }
     notFound();
   }
 

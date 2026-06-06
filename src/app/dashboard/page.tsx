@@ -9,50 +9,21 @@ import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 
 export const dynamic = "force-dynamic";
 
-const sampleData = {
-  focusTitle: "Finish Next.js full-stack project.",
-  focusStatus: "DOING" as const,
-  focusPriority: "CRITICAL" as const,
-  weeklyPulse: { completedThisCycle: 18, streakDays: 5 },
-  missions: { planned: 12, doing: 4, done: 89 },
-  deadline: {
-    title: "Next.js Project",
-    day: "Today",
-    time: "11:59 PM",
-    countdown: "T-04H",
-    priority: "CRITICAL" as const,
-  },
-  postLab: { experiments: 7, hypotheses: 3, validated: 14, archived: 52 },
-  recentCanvas: {
-    title: "Assignment Architecture Map",
-    updatedAtMinutesAgo: 22,
-  },
-};
-
-const hasMissions = (s: DashboardStats) =>
-  s.missions.planned + s.missions.doing + s.missions.done > 0;
-
 export default async function DashboardPage() {
   let stats: DashboardStats = emptyDashboardStats;
-  let databaseAvailable = true;
+  let databaseAvailable = Boolean(process.env.DATABASE_URL);
 
-  try {
-    stats = await getDashboardStats();
-  } catch {
-    databaseAvailable = false;
+  if (databaseAvailable) {
+    try {
+      stats = await getDashboardStats();
+    } catch {
+      databaseAvailable = false;
+    }
   }
 
-  const useSample = !databaseAvailable || !hasMissions(stats);
-
-  const focusTitle = useSample
-    ? sampleData.focusTitle
-    : (stats.todaysFocus?.title ?? sampleData.focusTitle);
-  const focusPriority = useSample
-    ? sampleData.focusPriority
-    : (stats.todaysFocus?.priority ?? sampleData.focusPriority);
-  const focusStatusRaw = useSample
-    ? sampleData.focusStatus
-    : (stats.todaysFocus?.status ?? "PLANNED");
+  const focusTitle = stats.todaysFocus?.title ?? "No active mission";
+  const focusPriority = stats.todaysFocus?.priority ?? "UNSET";
+  const focusStatusRaw = stats.todaysFocus?.status ?? "PLANNED";
   const focusStatus =
     focusStatusRaw === "DOING"
       ? "ACTIVE SESSION"
@@ -60,24 +31,11 @@ export default async function DashboardPage() {
         ? "COMPLETED"
         : "QUEUED";
 
-  const missions = useSample ? sampleData.missions : stats.missions;
-  const weeklyPulse = useSample
-    ? sampleData.weeklyPulse
-    : {
-        completedThisCycle:
-          stats.weeklyPulse.completedThisCycle > 0
-            ? stats.weeklyPulse.completedThisCycle
-            : sampleData.weeklyPulse.completedThisCycle,
-        streakDays:
-          stats.weeklyPulse.streakDays > 0
-            ? stats.weeklyPulse.streakDays
-            : sampleData.weeklyPulse.streakDays,
-      };
-  const postLab = useSample ? sampleData.postLab : stats.postLab;
+  const missions = stats.missions;
+  const weeklyPulse = stats.weeklyPulse;
+  const postLab = stats.postLab;
 
-  const deadline = useSample
-    ? sampleData.deadline
-    : stats.upcomingDeadline
+  const deadline = stats.upcomingDeadline
       ? {
           title: stats.upcomingDeadline.title,
           day: new Date(stats.upcomingDeadline.dueDate).toLocaleDateString(
@@ -91,27 +49,37 @@ export default async function DashboardPage() {
           countdown: countdownFor(stats.upcomingDeadline.dueDate),
           priority: stats.upcomingDeadline.priority,
         }
-      : { ...sampleData.deadline };
+      : {
+          title: "No active deadline",
+          day: "Unscheduled",
+          time: "--:--",
+          countdown: "T---",
+          priority: "LOW",
+        };
 
-  const recentCanvas = useSample
-    ? sampleData.recentCanvas
-    : stats.recentCanvas
+  const recentCanvas = stats.recentCanvas
       ? {
+          id: stats.recentCanvas.id,
           title: stats.recentCanvas.title,
           updatedAtMinutesAgo: Math.max(
             0,
             Math.floor((stats.fetchedAt - stats.recentCanvas.updatedAt.getTime()) / 60000),
           ),
         }
-      : sampleData.recentCanvas;
+      : null;
 
   return (
     <div className="bg-background min-h-screen">
       <Sidebar />
       <main className="ml-20 flex min-h-screen flex-col">
-        <CommandBar />
+        <CommandBar sessionDate={formatSessionDate(new Date())} />
 
         <div className="grid grid-cols-12 gap-gutter p-margin-mobile md:p-margin-desktop">
+          {!databaseAvailable && (
+            <p className="border-error text-error col-span-12 border p-sm text-sm">
+              Database unavailable. Start PostgreSQL and configure DATABASE_URL.
+            </p>
+          )}
           {/* Row 1: Today's Focus + Weekly Pulse */}
           <section className="border border-outline-variant hover:border-primary col-span-12 flex min-h-[240px] flex-col justify-between p-lg lg:col-span-8">
             <div>
@@ -141,12 +109,12 @@ export default async function DashboardPage() {
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
+              <Link
+                href="/board"
                 className="border-primary font-label-md text-label-md hover:bg-primary hover:text-on-primary border px-lg py-xs uppercase transition-all"
               >
                 Update
-              </button>
+              </Link>
             </div>
           </section>
 
@@ -281,7 +249,10 @@ export default async function DashboardPage() {
             </div>
           </section>
 
-          <section className="border border-outline-variant hover:border-primary bg-primary text-on-primary col-span-12 flex flex-col p-lg md:col-span-6">
+          <Link
+            href={recentCanvas ? `/canvas/${recentCanvas.id}` : "/canvas"}
+            className="border border-outline-variant hover:border-primary bg-primary text-on-primary col-span-12 flex flex-col p-lg md:col-span-6"
+          >
             <div className="mb-lg flex items-start justify-between">
               <span className="font-metadata text-metadata opacity-60 uppercase tracking-[0.2em]">
                 Recent Canvas
@@ -290,10 +261,12 @@ export default async function DashboardPage() {
             </div>
             <div className="mb-auto">
               <h3 className="font-headline-md text-headline-md mb-xs">
-                {recentCanvas.title}
+                {recentCanvas?.title ?? "No canvas yet"}
               </h3>
               <p className="font-metadata text-metadata opacity-60">
-                Last edited {recentCanvas.updatedAtMinutesAgo}m ago
+                {recentCanvas
+                  ? `Last edited ${recentCanvas.updatedAtMinutesAgo}m ago`
+                  : "Create your first visual workspace"}
               </p>
             </div>
             <div className="border-on-primary/20 relative mt-xl h-[120px] overflow-hidden border">
@@ -304,11 +277,21 @@ export default async function DashboardPage() {
                 </span>
               </div>
             </div>
-          </section>
+          </Link>
         </div>
       </main>
     </div>
   );
+}
+
+function formatSessionDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  })
+    .format(date)
+    .toUpperCase();
 }
 
 function countdownFor(dueDate: Date): string {
@@ -320,3 +303,4 @@ function countdownFor(dueDate: Date): string {
     ? `T-${Math.floor(hours / 24)}D`
     : `T-${String(hours).padStart(2, "0")}H`;
 }
+import Link from "next/link";

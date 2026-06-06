@@ -9,6 +9,7 @@ export type Tool =
   | "eraser";
 
 export type FillPattern = "none" | "solid" | "hachure" | "cross-hatch" | "dots";
+export type TextAlign = "left" | "center" | "right";
 
 export const FILL_PATTERNS: ReadonlyArray<FillPattern> = [
   "none",
@@ -78,6 +79,8 @@ export type TextShape = BaseShape & {
   type: "text";
   text: string;
   fontSize: number;
+  width?: number;
+  align?: TextAlign;
 };
 
 export type Camera = {
@@ -103,6 +106,7 @@ export type ToolDefaults = {
   strokeWidth: number;
   penSize: number;
   fontSize: number;
+  textAlign: TextAlign;
 };
 
 export const DEFAULT_TOOL_DEFAULTS: ToolDefaults = {
@@ -112,6 +116,7 @@ export const DEFAULT_TOOL_DEFAULTS: ToolDefaults = {
   strokeWidth: 2,
   penSize: 4,
   fontSize: 20,
+  textAlign: "left",
 };
 
 export const HISTORY_LIMIT = 100;

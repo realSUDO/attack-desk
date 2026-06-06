@@ -14,7 +14,9 @@ import {
 } from "react";
 import {
   Arrow,
+  Circle,
   Ellipse,
+  Group,
   Layer,
   Path,
   Rect,
@@ -23,7 +25,9 @@ import {
   Transformer,
 } from "react-konva";
 
+import { getFillPatternImage } from "./fillPattern";
 import { getPenPathData } from "./penPath";
+import { schoolbell } from "@/lib/fonts";
 import type { SceneApi } from "./store";
 import {
   MAX_ZOOM,
@@ -44,17 +48,22 @@ type Props = {
   selectedIds: ReadonlyArray<string>;
   setSelectedIds: (ids: ReadonlyArray<string>, additive?: boolean) => void;
   toolDefaults: ToolDefaults;
-  onToolChange: (tool: Tool) => void;
-  onRequestTextEdit: (id: string) => void;
+  onRequestTextEdit: (
+    shape: Pick<
+      TextShape,
+      "id" | "x" | "y" | "text" | "fontSize" | "width" | "align"
+    >,
+    isNew?: boolean,
+  ) => void;
   onContextMenuEvent: (
     point: { sx: number; sy: number; wx: number; wy: number },
     ids: ReadonlyArray<string>,
   ) => void;
   containerRef: RefObject<HTMLDivElement | null>;
+  editingTextId: string | null;
 };
 
 const GRID_SIZE = 24;
-const ARROW_HEAD_SIZE = 12;
 const ERASER_TOLERANCE_SCREEN_PX = 6;
 
 const TRANSFORMER_ANCHORS: string[] = [
@@ -67,9 +76,18 @@ const TRANSFORMER_ANCHORS: string[] = [
   "bottom-center",
   "bottom-right",
 ];
+const TEXT_TRANSFORMER_ANCHORS: string[] = [
+  "top-left",
+  "top-right",
+  "middle-left",
+  "middle-right",
+  "bottom-left",
+  "bottom-right",
+];
 const TRANSFORMER_PROPS = {
   rotateEnabled: true,
   keepRatio: false,
+  flipEnabled: false,
   ignoreStroke: true,
   anchorSize: 8,
   anchorStroke: "#1e1b15",
@@ -86,16 +104,33 @@ export function KonvaCanvas({
   selectedIds,
   setSelectedIds,
   toolDefaults,
-  onToolChange,
   onRequestTextEdit,
   onContextMenuEvent,
   containerRef,
+  editingTextId,
 }: Props) {
   const { scene } = api;
+  const setCamera = api.setCamera;
+  const updateShape = api.updateShape;
   const [stageSize, setStageSize] = useState({ w: 1, h: 1 });
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef<Map<string, KonvaNode>>(new Map());
+  const cameraCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const rightPanRef = useRef<{
+    pointerId: number;
+    startPointer: { x: number; y: number };
+    startCamera: { x: number; y: number };
+    clientPoint: { x: number; y: number };
+    worldPoint: { x: number; y: number };
+    ids: ReadonlyArray<string>;
+    active: boolean;
+  } | null>(null);
+  const suppressContextMenuRef = useRef(false);
+  const ignoreNativeContextMenuUntilRef = useRef(0);
+  const transformAnchorRef = useRef<string | null>(null);
 
   // Live pen/rect/ellipse/arrow state lives in refs so high-frequency
   // pointermove events do not cause React re-renders.
@@ -113,12 +148,48 @@ export function KonvaCanvas({
     id: string;
     originX: number;
     originY: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  // Marquee (drag-to-select rectangle) state.
+  const [marquee, setMarquee] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const marqueeRef = useRef<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+  const [magnetTarget, setMagnetTarget] = useState<{
+    shapeId: string;
+    point: { x: number; y: number };
   } | null>(null);
 
   const orderedShapes = useMemo(
     () => scene.shapes.slice().sort((a, b) => a.z - b.z),
     [scene.shapes],
   );
+  const shapeIds = useMemo(
+    () => new Set(scene.shapes.map((shape) => shape.id)),
+    [scene.shapes],
+  );
+  const selectedTextShape = useMemo(() => {
+    if (selectedIds.length !== 1) return null;
+    const shape = scene.shapes.find((item) => item.id === selectedIds[0]);
+    return shape?.type === "text" ? shape : null;
+  }, [scene.shapes, selectedIds]);
+
+  const registerNode = useCallback((id: string, node: KonvaNode | null) => {
+    if (node) nodeRefs.current.set(id, node);
+    else nodeRefs.current.delete(id);
+  }, []);
 
   // Observe container size.
   useEffect(() => {
@@ -131,11 +202,36 @@ export function KonvaCanvas({
     return () => ro.disconnect();
   }, [containerRef]);
 
+  useEffect(
+    () => () => {
+      if (cameraCommitTimerRef.current) {
+        clearTimeout(cameraCommitTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void document.fonts
+      .load(`16px ${schoolbell.style.fontFamily}`)
+      .then(() => {
+      if (!cancelled) stageRef.current?.batchDraw();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Sync transformer to selected nodes (re-runs on selection change).
   useLayoutEffect(() => {
     const tr = transformerRef.current;
     const nodes: KonvaNode[] = [];
     for (const id of selectedIds) {
+      // Skip the text shape being edited — its Konva node is unmounted
+      // (the DOM textarea overlay handles the visual) so the Transformer
+      // can't attach to it.
+      if (id === editingTextId) continue;
       const n = nodeRefs.current.get(id);
       if (n) nodes.push(n);
     }
@@ -144,7 +240,7 @@ export function KonvaCanvas({
       tr.forceUpdate();
       tr.getLayer()?.batchDraw();
     }
-  }, [selectedIds]);
+  }, [selectedIds, editingTextId, tool, orderedShapes]);
 
   // Helpers ---------------------------------------------------------------
   const getWorldPoint = useCallback((sx: number, sy: number) => {
@@ -186,7 +282,6 @@ export function KonvaCanvas({
         origin: { x: wx, y: wy },
         points: [[0, 0, 0.5]],
       };
-      api.beginCoalesce();
       setSelectedIds([id], false);
     },
     [api, toolDefaults, setSelectedIds],
@@ -196,13 +291,17 @@ export function KonvaCanvas({
     const live = livePenRef.current;
     if (!live) return;
     live.points.push([wx - live.origin.x, wy - live.origin.y, 0.5]);
+    const node = nodeRefs.current.get(live.id);
+    if (node instanceof Konva.Path) {
+      node.data(getPenPathData(live.points, node.getAttr("penSize") ?? 4));
+      node.getLayer()?.batchDraw();
+    }
   }, []);
 
   const endPen = useCallback(() => {
     const live = livePenRef.current;
     if (!live) return;
-    api.updateShape(live.id, { points: live.points });
-    api.endCoalesce();
+    api.updateShapeTransient(live.id, { points: live.points.slice() });
     livePenRef.current = null;
   }, [api]);
 
@@ -221,8 +320,15 @@ export function KonvaCanvas({
         width: 0,
         height: 0,
       } as Omit<RectShape, "id" | "z">);
-      liveRectRef.current = { id, originX: wx, originY: wy };
-      api.beginCoalesce();
+      liveRectRef.current = {
+        id,
+        originX: wx,
+        originY: wy,
+        x: wx,
+        y: wy,
+        width: 0,
+        height: 0,
+      };
       setSelectedIds([id], false);
     },
     [api, toolDefaults, setSelectedIds],
@@ -243,8 +349,15 @@ export function KonvaCanvas({
         width: 0,
         height: 0,
       } as Omit<EllipseShape, "id" | "z">);
-      liveRectRef.current = { id, originX: wx, originY: wy };
-      api.beginCoalesce();
+      liveRectRef.current = {
+        id,
+        originX: wx,
+        originY: wy,
+        x: wx,
+        y: wy,
+        width: 0,
+        height: 0,
+      };
       setSelectedIds([id], false);
     },
     [api, toolDefaults, setSelectedIds],
@@ -258,14 +371,36 @@ export function KonvaCanvas({
       const y = Math.min(live.originY, wy);
       const w = Math.abs(wx - live.originX);
       const h = Math.abs(wy - live.originY);
-      api.updateShape(live.id, { x, y, width: w, height: h });
+      live.x = x;
+      live.y = y;
+      live.width = w;
+      live.height = h;
+      const node = nodeRefs.current.get(live.id);
+      if (node) {
+        node.position({ x, y });
+        if (node instanceof Konva.Group) {
+          const ellipse = node.findOne<Konva.Ellipse>(".ellipse-body");
+          ellipse?.position({ x: w / 2, y: h / 2 });
+          ellipse?.radius({ x: w / 2, y: h / 2 });
+        } else {
+          node.size({ width: w, height: h });
+        }
+        node.getLayer()?.batchDraw();
+      }
     },
-    [api],
+    [],
   );
 
   const endRect = useCallback(() => {
+    const live = liveRectRef.current;
+    if (!live) return;
+    api.updateShapeTransient(live.id, {
+      x: live.x,
+      y: live.y,
+      width: live.width,
+      height: live.height,
+    });
     liveRectRef.current = null;
-    api.endCoalesce();
   }, [api]);
 
   const beginArrow = useCallback(
@@ -287,8 +422,8 @@ export function KonvaCanvas({
         origin: { x: wx, y: wy },
         points: [[0, 0]],
       };
-      api.beginCoalesce();
       setSelectedIds([id], false);
+      setMagnetTarget(null);
     },
     [api, toolDefaults, setSelectedIds],
   );
@@ -297,36 +432,29 @@ export function KonvaCanvas({
     (wx: number, wy: number) => {
       const live = liveArrowRef.current;
       if (!live) return;
-      live.points.push([wx - live.origin.x, wy - live.origin.y]);
-      api.updateShape(live.id, { points: live.points });
+      // Magnetic snap: if the pointer is near a shape's bounding box edge,
+      // snap the new point to that edge.
+      const snap = magnetSnap(wx, wy, scene.shapes, 12 / scene.camera.zoom, live.id);
+      const sx = snap ? snap.point.x : wx;
+      const sy = snap ? snap.point.y : wy;
+      live.points.push([sx - live.origin.x, sy - live.origin.y]);
+      const node = nodeRefs.current.get(live.id);
+      if (node instanceof Konva.Arrow) {
+        node.points(flatArrowPoints(live.points));
+        node.getLayer()?.batchDraw();
+      }
+      setMagnetTarget(snap ? { shapeId: snap.shapeId, point: snap.point } : null);
     },
-    [api],
+    [scene.shapes, scene.camera.zoom],
   );
 
   const endArrow = useCallback(() => {
+    const live = liveArrowRef.current;
+    if (!live) return;
+    api.updateShapeTransient(live.id, { points: live.points.slice() });
     liveArrowRef.current = null;
-    api.endCoalesce();
+    setMagnetTarget(null);
   }, [api]);
-
-  const beginText = useCallback(
-    (wx: number, wy: number) => {
-      const id = api.addShape({
-        type: "text",
-        x: wx,
-        y: wy,
-        rotation: 0,
-        groupId: null,
-        stroke: toolDefaults.stroke,
-        fill: "transparent",
-        fillPattern: "none",
-        strokeWidth: 0,
-        text: "",
-        fontSize: toolDefaults.fontSize,
-      } as Omit<TextShape, "id" | "z">);
-      onRequestTextEdit(id);
-    },
-    [api, toolDefaults, onRequestTextEdit],
-  );
 
   const eraserTolerance = ERASER_TOLERANCE_SCREEN_PX / scene.camera.zoom;
 
@@ -349,21 +477,6 @@ export function KonvaCanvas({
     [api, orderedShapes, eraserTolerance],
   );
 
-  // Live pen update: rAF-throttled writes. Runs only while a pen stroke is
-  // in progress.
-  useEffect(() => {
-    if (!livePenRef.current) return;
-    let raf = 0;
-    const tick = () => {
-      const live = livePenRef.current;
-      if (!live) return;
-      api.updateShape(live.id, { points: live.points });
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  });
-
   // Pan via stage drag (pan tool).
   useEffect(() => {
     const stage = stageRef.current;
@@ -372,15 +485,87 @@ export function KonvaCanvas({
   }, [tool]);
 
   // Stage event handlers --------------------------------------------------
-  const onStageMouseDown = useCallback(
-    (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
+  const onStagePointerDown = useCallback(
+    (e: KonvaEventObject<PointerEvent>) => {
       const stage = stageRef.current;
       if (!stage) return;
-      const native = e.evt as MouseEvent | TouchEvent;
-      const isRight = "button" in native && (native as MouseEvent).button === 2;
+      const native = e.evt;
+      const isRight = native.button === 2;
       const pointer = stage.getPointerPosition();
-      if (!pointer || isRight) return;
+      if (!pointer) return;
+
+      if (isRight) {
+        const target = findShapeNode(e.target, shapeIds);
+        const id = target?.id();
+        const ids = id
+          ? selectedIds.includes(id)
+            ? selectedIds
+            : [id]
+          : [];
+        rightPanRef.current = {
+          pointerId: native.pointerId,
+          startPointer: pointer,
+          startCamera: { x: stage.x(), y: stage.y() },
+          clientPoint: { x: native.clientX, y: native.clientY },
+          worldPoint: getWorldPoint(pointer.x, pointer.y),
+          ids,
+          active: false,
+        };
+        suppressContextMenuRef.current = false;
+        stage.container().setPointerCapture?.(native.pointerId);
+        return;
+      }
       const wp = getWorldPoint(pointer.x, pointer.y);
+      const shapeNode = findShapeNode(e.target, shapeIds);
+      const additive = native.shiftKey;
+
+      if (isTransformerTarget(e.target)) {
+        return;
+      }
+
+      // Clear any active marquee when switching tools or clicking.
+      if (marqueeRef.current && tool !== "select") {
+        marqueeRef.current = null;
+        setMarquee(null);
+      }
+      // Clear magnet hint when not actively drawing an arrow.
+      if (tool !== "arrow" && magnetTarget) {
+        setMagnetTarget(null);
+      }
+
+      if (tool === "select") {
+        if (shapeNode) {
+          const id = shapeNode.id();
+          if (additive) {
+            if (selectedIds.includes(id)) {
+              setSelectedIds(selectedIds.filter((sid) => sid !== id), false);
+            } else {
+              setSelectedIds([...selectedIds, id], false);
+            }
+          } else if (!selectedIds.includes(id)) {
+            setSelectedIds([id], false);
+          }
+        } else {
+          // Start marquee on empty space.
+          marqueeRef.current = {
+            startX: wp.x,
+            startY: wp.y,
+            currentX: wp.x,
+            currentY: wp.y,
+          };
+          setSelectedIds([], false);
+        }
+        return;
+      }
+
+      if (tool === "text") {
+        // Text placement is handled by a DOM layer in CanvasPage so textarea
+        // focus does not depend on Konva's pointer event routing.
+        return;
+      }
+
+      // Other draw tools don't start drawing on top of an existing shape.
+      if (shapeNode) return;
 
       if (tool === "pen") {
         beginPen(wp.x, wp.y);
@@ -398,28 +583,11 @@ export function KonvaCanvas({
         beginArrow(wp.x, wp.y);
         return;
       }
-      if (tool === "text") {
-        beginText(wp.x, wp.y);
-        onToolChange("select");
-        return;
-      }
       if (tool === "eraser") {
         beginErase(wp.x, wp.y);
         return;
       }
       if (tool === "pan") return;
-
-      // Select tool: hit-test top shape.
-      const shapeNode = findShapeNode(e.target);
-      if (shapeNode) {
-        const id = shapeNode.id();
-        if (selectedIds.includes(id)) return;
-        const additive =
-          "shiftKey" in native && (native as MouseEvent).shiftKey;
-        setSelectedIds([id], additive);
-      } else {
-        setSelectedIds([], false);
-      }
     },
     [
       tool,
@@ -428,20 +596,54 @@ export function KonvaCanvas({
       beginRect,
       beginEllipse,
       beginArrow,
-      beginText,
-      onToolChange,
       beginErase,
       setSelectedIds,
       selectedIds,
+      magnetTarget,
+      shapeIds,
     ],
   );
 
-  const onStageMouseMove = useCallback(() => {
+  const onStagePointerMove = useCallback(() => {
     const stage = stageRef.current;
     if (!stage) return;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
+
+    const rightPan = rightPanRef.current;
+    if (rightPan) {
+      const dx = pointer.x - rightPan.startPointer.x;
+      const dy = pointer.y - rightPan.startPointer.y;
+      if (!rightPan.active && Math.hypot(dx, dy) < 6) return;
+
+      if (!rightPan.active) {
+        rightPan.active = true;
+        suppressContextMenuRef.current = true;
+        stage.container().style.cursor = "grabbing";
+      }
+      const x = rightPan.startCamera.x + dx;
+      const y = rightPan.startCamera.y + dy;
+      stage.position({ x, y });
+      stage.batchDraw();
+      const container = containerRef.current;
+      if (container) container.style.backgroundPosition = `${x}px ${y}px`;
+      return;
+    }
+
     const wp = getWorldPoint(pointer.x, pointer.y);
+
+    if (marqueeRef.current) {
+      marqueeRef.current.currentX = wp.x;
+      marqueeRef.current.currentY = wp.y;
+      const m = marqueeRef.current;
+      setMarquee({
+        x: Math.min(m.startX, m.currentX),
+        y: Math.min(m.startY, m.currentY),
+        width: Math.abs(m.currentX - m.startX),
+        height: Math.abs(m.currentY - m.startY),
+      });
+      return;
+    }
 
     if (livePenRef.current) {
       extendPen(wp.x, wp.y);
@@ -458,26 +660,112 @@ export function KonvaCanvas({
     if (tool === "eraser") {
       extendErase(wp.x, wp.y);
     }
-  }, [getWorldPoint, extendPen, extendRect, extendArrow, extendErase, tool]);
+  }, [
+    getWorldPoint,
+    extendPen,
+    extendRect,
+    extendArrow,
+    extendErase,
+    tool,
+    containerRef,
+  ]);
 
-  const onStageMouseUp = useCallback(() => {
-    if (livePenRef.current) endPen();
-    if (liveRectRef.current) endRect();
-    if (liveArrowRef.current) endArrow();
-  }, [endPen, endRect, endArrow]);
+  const onStagePointerUp = useCallback(
+    (e?: KonvaEventObject<PointerEvent>) => {
+      const rightPan = rightPanRef.current;
+      if (rightPan) {
+        const stage = stageRef.current;
+        if (stage) {
+          if (rightPan.active) {
+            setCamera({ x: stage.x(), y: stage.y() });
+            stage.container().style.cursor = cursorForTool(
+              tool,
+            );
+          } else {
+            if (rightPan.ids.length > 0) {
+              setSelectedIds(rightPan.ids, false);
+            }
+            onContextMenuEvent(
+              {
+                sx: rightPan.clientPoint.x,
+                sy: rightPan.clientPoint.y,
+                wx: rightPan.worldPoint.x,
+                wy: rightPan.worldPoint.y,
+              },
+              rightPan.ids,
+            );
+            ignoreNativeContextMenuUntilRef.current = performance.now() + 250;
+          }
+          if (e) {
+            stage.container().releasePointerCapture?.(rightPan.pointerId);
+          }
+        }
+        rightPanRef.current = null;
+        return;
+      }
+      if (marqueeRef.current) {
+        const m = marqueeRef.current;
+        marqueeRef.current = null;
+        const x1 = Math.min(m.startX, m.currentX);
+        const y1 = Math.min(m.startY, m.currentY);
+        const x2 = Math.max(m.startX, m.currentX);
+        const y2 = Math.max(m.startY, m.currentY);
+        setMarquee(null);
+        // If the marquee is essentially a click (no drag), clear selection.
+        if (x2 - x1 < 2 && y2 - y1 < 2) {
+          setSelectedIds([], false);
+          return;
+        }
+        const hit: Array<string> = [];
+        for (const s of orderedShapes) {
+          const b = shapeBounds(s);
+          if (!b) continue;
+          if (
+            b.x < x2 &&
+            b.x + b.width > x1 &&
+            b.y < y2 &&
+            b.y + b.height > y1
+          ) {
+            hit.push(s.id);
+          }
+        }
+        setSelectedIds(hit, false);
+        return;
+      }
+      if (livePenRef.current) endPen();
+      if (liveRectRef.current) endRect();
+      if (liveArrowRef.current) endArrow();
+    },
+    [
+      endPen,
+      endRect,
+      endArrow,
+      orderedShapes,
+      setSelectedIds,
+      setCamera,
+      tool,
+      onContextMenuEvent,
+    ],
+  );
 
   const onStageDragEnd = useCallback(() => {
     const stage = stageRef.current;
     if (!stage) return;
-    api.setCamera({ x: stage.x(), y: stage.y() });
-  }, [api]);
+    setCamera({ x: stage.x(), y: stage.y() });
+    stage.container().style.cursor = cursorForTool(tool);
+  }, [setCamera, tool]);
+
+  const onStageDragStart = useCallback(() => {
+    const stage = stageRef.current;
+    if (stage && tool === "pan") stage.container().style.cursor = "grabbing";
+  }, [tool]);
 
   const onShapeDragEnd = useCallback(
-    (id: string) => (e: KonvaEventObject<DragEvent>) => {
+    (id: string, e: KonvaEventObject<DragEvent>) => {
       const node = e.target;
-      api.updateShape(id, { x: node.x(), y: node.y() });
+      updateShape(id, { x: node.x(), y: node.y() });
     },
-    [api],
+    [updateShape],
   );
 
   const onWheel = useCallback(
@@ -493,59 +781,127 @@ export function KonvaCanvas({
         y: (pointer.y - stage.y()) / oldZoom,
       };
       const isZoom = e.evt.ctrlKey || e.evt.metaKey;
+      let nextCamera = {
+        x: stage.x(),
+        y: stage.y(),
+        zoom: oldZoom,
+      };
       if (isZoom) {
         const direction = e.evt.deltaY < 0 ? 1 : -1;
         const factor = 1 + direction * 0.08;
         const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZoom * factor));
-        api.setCamera({
+        nextCamera = {
           zoom: newZoom,
           x: pointer.x - worldUnderPointer.x * newZoom,
           y: pointer.y - worldUnderPointer.y * newZoom,
-        });
+        };
       } else {
-        api.setCamera({
+        nextCamera = {
+          zoom: oldZoom,
           x: stage.x() - e.evt.deltaX,
           y: stage.y() - e.evt.deltaY,
-        });
+        };
       }
+      stage.position({ x: nextCamera.x, y: nextCamera.y });
+      stage.scale({ x: nextCamera.zoom, y: nextCamera.zoom });
+      stage.batchDraw();
+
+      const container = containerRef.current;
+      if (container) {
+        container.style.backgroundSize =
+          `${GRID_SIZE * nextCamera.zoom}px ${GRID_SIZE * nextCamera.zoom}px`;
+        container.style.backgroundPosition =
+          `${nextCamera.x}px ${nextCamera.y}px`;
+      }
+
+      if (cameraCommitTimerRef.current) {
+        clearTimeout(cameraCommitTimerRef.current);
+      }
+      cameraCommitTimerRef.current = setTimeout(() => {
+        setCamera(nextCamera);
+        cameraCommitTimerRef.current = null;
+      }, 120);
     },
-    [api],
+    [setCamera, containerRef],
   );
 
-  const onContextMenu = useCallback(
-    (e: KonvaEventObject<MouseEvent>) => {
-      e.evt.preventDefault();
+  const openContextMenu = useCallback(
+    (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (performance.now() < ignoreNativeContextMenuUntilRef.current) return;
+      if (rightPanRef.current) return;
+      if (suppressContextMenuRef.current) {
+        suppressContextMenuRef.current = false;
+        return;
+      }
       const stage = stageRef.current;
       if (!stage) return;
+      stage.setPointersPositions(event);
       const pointer = stage.getPointerPosition();
       if (!pointer) return;
       const wp = getWorldPoint(pointer.x, pointer.y);
-      const target = findShapeNode(e.target);
-      let ids = selectedIds;
+      const target = findShapeNode(stage.getIntersection(pointer), shapeIds);
+      let ids: ReadonlyArray<string> = [];
       if (target) {
         const id = target.id();
+        ids = selectedIds.includes(id) ? selectedIds : [id];
         if (!selectedIds.includes(id)) {
-          ids = [id];
           setSelectedIds(ids, false);
         }
       }
       onContextMenuEvent(
-        { sx: pointer.x, sy: pointer.y, wx: wp.x, wy: wp.y },
+        {
+          sx: event.clientX,
+          sy: event.clientY,
+          wx: wp.x,
+          wy: wp.y,
+        },
         ids,
       );
     },
-    [getWorldPoint, onContextMenuEvent, selectedIds, setSelectedIds],
+    [
+      getWorldPoint,
+      onContextMenuEvent,
+      selectedIds,
+      setSelectedIds,
+      shapeIds,
+    ],
   );
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const handleContextMenu = (event: MouseEvent) => {
+      openContextMenu(event);
+    };
+    container.addEventListener("contextmenu", handleContextMenu, {
+      capture: true,
+    });
+    return () => {
+      container.removeEventListener("contextmenu", handleContextMenu, {
+        capture: true,
+      });
+    };
+  }, [containerRef, openContextMenu]);
+
   const onShapeDblClick = useCallback(
-    (id: string) => (e: KonvaEventObject<MouseEvent>) => {
-      const s = api.scene.shapes.find((sh) => sh.id === id);
-      if (s?.type === "text") {
-        e.cancelBubble = true;
-        onRequestTextEdit(id);
-      }
+    (shape: Shape, e: KonvaEventObject<MouseEvent>) => {
+      if (shape.type !== "text") return;
+      e.cancelBubble = true;
+      onRequestTextEdit(shape);
     },
-    [api.scene.shapes, onRequestTextEdit],
+    [onRequestTextEdit],
+  );
+
+  const handleShapeHover = useCallback(
+    (hovering: boolean) => {
+      const stage = stageRef.current;
+      if (!stage || rightPanRef.current?.active) return;
+      stage.container().style.cursor =
+        tool === "select" && hovering ? "move" : cursorForTool(tool);
+    },
+    [tool],
   );
 
   const isDrawing = tool === "pen" || tool === "rect" || tool === "ellipse" || tool === "arrow" || tool === "eraser";
@@ -556,14 +912,13 @@ export function KonvaCanvas({
         "linear-gradient(to right, rgba(30, 27, 21, 0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(30, 27, 21, 0.08) 1px, transparent 1px)",
       backgroundSize: `${GRID_SIZE * scene.camera.zoom}px ${GRID_SIZE * scene.camera.zoom}px`,
       backgroundPosition: `${scene.camera.x}px ${scene.camera.y}px`,
-      cursor: cursorForTool(tool, selectedIds.length > 0),
+      cursor: cursorForTool(tool),
     }),
     [
       scene.camera.zoom,
       scene.camera.x,
       scene.camera.y,
       tool,
-      selectedIds.length,
     ],
   );
 
@@ -581,15 +936,13 @@ export function KonvaCanvas({
         y={scene.camera.y}
         scaleX={scene.camera.zoom}
         scaleY={scene.camera.zoom}
-        onMouseDown={onStageMouseDown}
-        onMouseMove={onStageMouseMove}
-        onMouseUp={onStageMouseUp}
-        onTouchStart={onStageMouseDown}
-        onTouchMove={onStageMouseMove}
-        onTouchEnd={onStageMouseUp}
+        onPointerDown={onStagePointerDown}
+        onPointerMove={onStagePointerMove}
+        onPointerUp={onStagePointerUp}
+        onPointerCancel={onStagePointerUp}
+        onDragStart={onStageDragStart}
         onDragEnd={onStageDragEnd}
         onWheel={onWheel}
-        onContextMenu={onContextMenu as unknown as (e: KonvaEventObject<PointerEvent>) => void}
       >
         <Layer>
           {orderedShapes.map((shape) => (
@@ -597,45 +950,104 @@ export function KonvaCanvas({
               key={shape.id}
               shape={shape}
               isDraggable={tool === "select" && !isDrawing}
-              registerNode={(n) => {
-                if (n) nodeRefs.current.set(shape.id, n);
-                else nodeRefs.current.delete(shape.id);
-              }}
-              onDragEnd={onShapeDragEnd(shape.id)}
-              onDblClick={onShapeDblClick(shape.id)}
+              isHidden={shape.id === editingTextId}
+              registerNode={registerNode}
+              onDragEnd={onShapeDragEnd}
+              onDblClick={onShapeDblClick}
+              onHover={handleShapeHover}
             />
           ))}
+          {marquee && (
+            <Rect
+              x={marquee.x}
+              y={marquee.y}
+              width={marquee.width}
+              height={marquee.height}
+              fill="rgba(30, 27, 21, 0.04)"
+              stroke="#1e1b15"
+              strokeWidth={1}
+              dash={[4, 4]}
+              listening={false}
+            />
+          )}
+          {magnetTarget && (
+            <Circle
+              x={magnetTarget.point.x}
+              y={magnetTarget.point.y}
+              radius={6 / scene.camera.zoom}
+              stroke="#1e1b15"
+              strokeWidth={1.5 / scene.camera.zoom}
+              fill="rgba(201, 243, 8, 0.6)"
+              listening={false}
+            />
+          )}
           {selectedIds.length > 0 && tool === "select" && (
             <CanvasTransformer
               ref={transformerRef}
-              onTransformEnd={(tr) => {
+              enabledAnchors={
+                selectedTextShape
+                  ? TEXT_TRANSFORMER_ANCHORS
+                  : TRANSFORMER_ANCHORS
+              }
+              keepRatio={Boolean(selectedTextShape)}
+              minWidth={selectedTextShape ? 40 : 5}
+              minHeight={selectedTextShape ? 8 : 5}
+              onTransformStart={() => {
+                transformAnchorRef.current =
+                  transformerRef.current?.getActiveAnchor() ?? null;
+              }}
+              onTransform={() => {
+                // Konva owns the live transform. React state is committed once
+                // on transform end, avoiding a render for every pointer move.
+                const tr = transformerRef.current;
+                if (!tr) return;
+                const anchor =
+                  tr.getActiveAnchor() ?? transformAnchorRef.current;
+                if (
+                  selectedTextShape &&
+                  (anchor === "middle-left" || anchor === "middle-right")
+                ) {
+                  const node = tr.nodes()[0];
+                  if (node instanceof Konva.Text) {
+                    node.width(Math.max(40, node.width() * Math.abs(node.scaleX())));
+                    node.scaleX(1);
+                    node.scaleY(1);
+                    tr.forceUpdate();
+                  }
+                }
+                tr.getLayer()?.batchDraw();
+              }}
+              onTransformEnd={() => {
+                const tr = transformerRef.current;
+                if (!tr) return;
+                const updates: Array<{ id: string; patch: Partial<Shape> }> = [];
                 tr.getNodes().forEach((node) => {
                   const id = node.id();
                   if (!id) return;
                   const shape = api.scene.shapes.find((s) => s.id === id);
                   if (!shape) return;
-                  const scaleX = node.scaleX();
-                  const scaleY = node.scaleY();
+                  const scaleX = Math.abs(node.scaleX());
+                  const scaleY = Math.abs(node.scaleY());
                   const rotation = node.rotation();
+                  const x = node.x();
+                  const y = node.y();
                   if (shape.type === "rect" || shape.type === "ellipse") {
-                    api.updateShape(id, {
-                      x: node.x(),
-                      y: node.y(),
-                      rotation,
-                      width: Math.max(1, shape.width * scaleX),
-                      height: Math.max(1, shape.height * scaleY),
+                    const newWidth = Math.max(1, shape.width * scaleX);
+                    const newHeight = Math.max(1, shape.height * scaleY);
+                    updates.push({
+                      id,
+                      patch: { x, y, rotation, width: newWidth, height: newHeight },
                     });
                   } else if (shape.type === "arrow") {
-                    api.updateShape(id, {
-                      x: node.x(),
-                      y: node.y(),
-                      rotation,
-                      points: shape.points.map(
-                        (p) => [p[0] * scaleX, p[1] * scaleY] as const,
-                      ),
+                    const newPoints = shape.points.map(
+                      (p) => [p[0] * scaleX, p[1] * scaleY] as const,
+                    );
+                    updates.push({
+                      id,
+                      patch: { x, y, rotation, points: newPoints },
                     });
                   } else if (shape.type === "pen") {
-                    const points = shape.points.map(
+                    const newPoints = shape.points.map(
                       (p) =>
                         [p[0] * scaleX, p[1] * scaleY, p[2]] as readonly [
                           number,
@@ -643,30 +1055,39 @@ export function KonvaCanvas({
                           number,
                         ],
                     );
-                    api.updateShape(id, {
-                      x: node.x(),
-                      y: node.y(),
-                      rotation,
-                      points,
+                    updates.push({
+                      id,
+                      patch: { x, y, rotation, points: newPoints },
                     });
                   } else {
-                    api.updateShape(id, {
-                      x: node.x(),
-                      y: node.y(),
-                      rotation,
+                    const textWidth = shape.width ?? node.width();
+                    const anchor = transformAnchorRef.current;
+                    const isWidthResize =
+                      anchor === "middle-left" || anchor === "middle-right";
+                    const uniformScale = Math.max(scaleX, scaleY);
+                    updates.push({
+                      id,
+                      patch: {
+                        x,
+                        y,
+                        rotation,
+                        width: Math.max(
+                          40,
+                          isWidthResize
+                            ? node.width()
+                            : textWidth * uniformScale,
+                        ),
+                        fontSize: isWidthResize
+                          ? shape.fontSize
+                          : Math.max(8, shape.fontSize * uniformScale),
+                      },
                     });
                   }
                 });
-                // Reset scale on the Konva nodes after the next paint so the
-                // re-render from updateShape() doesn't snap the node back to
-                // its pre-reset visual state.
-                requestAnimationFrame(() => {
-                  tr.getNodes().forEach((node) => {
-                    node.scaleX(1);
-                    node.scaleY(1);
-                  });
-                  tr.forceUpdate();
-                });
+                transformAnchorRef.current = null;
+                if (updates.length > 0) api.updateMany(updates);
+                tr.forceUpdate();
+                tr.getLayer()?.batchDraw();
               }}
             />
           )}
@@ -682,22 +1103,45 @@ export function KonvaCanvas({
 const ShapeNode = React.memo(function ShapeNode({
   shape,
   isDraggable,
+  isHidden,
   registerNode,
   onDragEnd,
   onDblClick,
+  onHover,
 }: {
   shape: Shape;
   isDraggable: boolean;
-  registerNode: (n: KonvaNode | null) => void;
-  onDragEnd: (e: KonvaEventObject<DragEvent>) => void;
-  onDblClick: (e: KonvaEventObject<MouseEvent>) => void;
+  isHidden: boolean;
+  registerNode: (id: string, n: KonvaNode | null) => void;
+  onDragEnd: (id: string, e: KonvaEventObject<DragEvent>) => void;
+  onDblClick: (shape: Shape, e: KonvaEventObject<MouseEvent>) => void;
+  onHover: (hovering: boolean) => void;
 }) {
-  const cancelMouseDown = useCallback(
-    (e: KonvaEventObject<MouseEvent>) => {
-      e.cancelBubble = true;
+  // Reset Konva scale to 1 after the store update propagates. This is
+  // necessary because the Transformer applies scale to the node during
+  // resize; we bake the scale into the shape's intrinsic dimensions (or
+  // point arrays) and then clear the Konva scale so the next paint matches.
+  const nodeRef = useRef<KonvaNode | null>(null);
+  useLayoutEffect(() => {
+    const n = nodeRef.current;
+    if (!n) return;
+    if (n.scaleX() !== 1 || n.scaleY() !== 1) {
+      n.scaleX(1);
+      n.scaleY(1);
+      n.getLayer()?.batchDraw();
+    }
+  });
+
+  // Combined ref: stores the node locally for the scale-reset effect AND
+  // calls the parent-supplied registerNode so the Transformer can find it.
+  const setRef = useCallback(
+    (n: KonvaNode | null) => {
+      nodeRef.current = n;
+      registerNode(shape.id, n);
     },
-    [],
+    [registerNode, shape.id],
   );
+
   const commonProps = {
     id: shape.id,
     x: shape.x,
@@ -705,9 +1149,10 @@ const ShapeNode = React.memo(function ShapeNode({
     rotation: shape.rotation,
     draggable: isDraggable,
     strokeScaleEnabled: false,
-    onDragEnd,
-    onDblClick,
-    onMouseDown: cancelMouseDown,
+    onDragEnd: (e: KonvaEventObject<DragEvent>) => onDragEnd(shape.id, e),
+    onDblClick: (e: KonvaEventObject<MouseEvent>) => onDblClick(shape, e),
+    onPointerEnter: () => onHover(true),
+    onPointerLeave: () => onHover(false),
   };
 
   const penData = useMemo(
@@ -717,9 +1162,11 @@ const ShapeNode = React.memo(function ShapeNode({
         : "",
     [shape],
   );
-  const arrowData = useMemo(
+  const patternImage = useMemo(
     () =>
-      shape.type === "arrow" ? flatArrowPoints(shape.points) : [],
+      shape.type === "rect" || shape.type === "ellipse"
+        ? getFillPatternImage(shape.fillPattern, shape.fill, shape.stroke)
+        : undefined,
     [shape],
   );
   const ellipseOffsets = useMemo(
@@ -735,49 +1182,63 @@ const ShapeNode = React.memo(function ShapeNode({
     [shape],
   );
 
+  if (isHidden) return null;
+
   if (shape.type === "rect") {
     return (
       <Rect
         {...commonProps}
-        ref={registerNode as unknown as (n: Konva.Rect | null) => void}
+        ref={setRef as unknown as (n: Konva.Rect | null) => void}
         width={shape.width}
         height={shape.height}
         stroke={shape.stroke}
         strokeWidth={shape.strokeWidth}
-        fill={shape.fill}
+        fill={patternImage ? undefined : shape.fill}
+        fillPatternImage={patternImage}
+        fillPatternRepeat="repeat"
+        fillPriority={patternImage ? "pattern" : "color"}
         listening
       />
     );
   }
   if (shape.type === "ellipse" && ellipseOffsets) {
     return (
-      <Ellipse
+      <Group
         {...commonProps}
-        ref={registerNode as unknown as (n: Konva.Ellipse | null) => void}
-        x={shape.x + ellipseOffsets.cx}
-        y={shape.y + ellipseOffsets.cy}
-        radiusX={ellipseOffsets.rx}
-        radiusY={ellipseOffsets.ry}
-        stroke={shape.stroke}
-        strokeWidth={shape.strokeWidth}
-        fill={shape.fill}
+        ref={setRef as unknown as (n: Konva.Group | null) => void}
         listening
-      />
+      >
+        <Ellipse
+          name="ellipse-body"
+          x={ellipseOffsets.cx}
+          y={ellipseOffsets.cy}
+          radiusX={ellipseOffsets.rx}
+          radiusY={ellipseOffsets.ry}
+          stroke={shape.stroke}
+          strokeWidth={shape.strokeWidth}
+          fill={patternImage ? undefined : shape.fill}
+          fillPatternImage={patternImage}
+          fillPatternRepeat="repeat"
+          fillPriority={patternImage ? "pattern" : "color"}
+          listening
+        />
+      </Group>
     );
   }
   if (shape.type === "arrow") {
     return (
       <Arrow
         {...commonProps}
-        ref={registerNode as unknown as (n: Konva.Arrow | null) => void}
-        points={arrowData}
+        ref={setRef as unknown as (n: Konva.Arrow | null) => void}
+        points={flatArrowPoints(shape.points)}
         stroke={shape.stroke}
         fill={shape.stroke}
         strokeWidth={shape.strokeWidth}
-        pointerLength={ARROW_HEAD_SIZE}
-        pointerWidth={ARROW_HEAD_SIZE}
+        pointerLength={arrowHeadLength(shape.strokeWidth)}
+        pointerWidth={arrowHeadWidth(shape.strokeWidth)}
         lineCap="round"
         lineJoin="round"
+        tension={0.18}
         listening
       />
     );
@@ -787,7 +1248,8 @@ const ShapeNode = React.memo(function ShapeNode({
       return (
         <Path
           {...commonProps}
-          ref={registerNode as unknown as (n: Konva.Path | null) => void}
+          ref={setRef as unknown as (n: Konva.Path | null) => void}
+          penSize={shape.size}
           data={circlePath(Math.max(1, shape.size / 2))}
           fill={shape.stroke}
         />
@@ -796,7 +1258,8 @@ const ShapeNode = React.memo(function ShapeNode({
     return (
       <Path
         {...commonProps}
-        ref={registerNode as unknown as (n: Konva.Path | null) => void}
+        ref={setRef as unknown as (n: Konva.Path | null) => void}
+        penSize={shape.size}
         data={penData}
         fill={shape.stroke}
         listening
@@ -807,13 +1270,15 @@ const ShapeNode = React.memo(function ShapeNode({
     return (
       <KonvaText
         {...commonProps}
-        ref={registerNode as unknown as (n: Konva.Text | null) => void}
+        ref={setRef as unknown as (n: Konva.Text | null) => void}
         text={shape.text || " "}
         fontSize={shape.fontSize}
-        fontFamily="Hanken Grotesk, sans-serif"
-        fontStyle="500"
+        fontFamily={schoolbell.style.fontFamily}
+        fontStyle="normal"
         fill={shape.stroke}
         lineHeight={1.2}
+        width={shape.width}
+        align={shape.align ?? "left"}
         listening
       />
     );
@@ -822,15 +1287,45 @@ const ShapeNode = React.memo(function ShapeNode({
 });
 
 const CanvasTransformer = React.memo(
-  React.forwardRef<Konva.Transformer, { onTransformEnd: (tr: Konva.Transformer) => void }>(
-    function CanvasTransformer({ onTransformEnd }, ref) {
+  React.forwardRef<
+    Konva.Transformer,
+    {
+      enabledAnchors: string[];
+      keepRatio: boolean;
+      minWidth: number;
+      minHeight: number;
+      onTransformStart: () => void;
+      onTransform: () => void;
+      onTransformEnd: () => void;
+    }
+  >(
+    function CanvasTransformer(
+      {
+        enabledAnchors,
+        keepRatio,
+        minWidth,
+        minHeight,
+        onTransformStart,
+        onTransform,
+        onTransformEnd,
+      },
+      ref,
+    ) {
       return (
         <Transformer
           ref={ref}
           {...TRANSFORMER_PROPS}
-          onTransformEnd={(e) => {
-            onTransformEnd(e.target as unknown as Konva.Transformer);
-          }}
+          enabledAnchors={enabledAnchors}
+          keepRatio={keepRatio}
+          boundBoxFunc={(oldBox, newBox) =>
+            Math.abs(newBox.width) < minWidth ||
+            Math.abs(newBox.height) < minHeight
+              ? oldBox
+              : newBox
+          }
+          onTransformStart={onTransformStart}
+          onTransform={onTransform}
+          onTransformEnd={onTransformEnd}
         />
       );
     },
@@ -844,36 +1339,134 @@ function circlePath(r: number): string {
 function flatArrowPoints(
   points: ReadonlyArray<readonly [number, number]>,
 ): number[] {
-  const out: number[] = [];
-  for (const p of points) {
-    out.push(p[0], p[1]);
-  }
-  return out;
+  return points.flatMap(([x, y]) => [x, y]);
+}
+
+function arrowHeadLength(strokeWidth: number): number {
+  return Math.max(12, strokeWidth * 4);
+}
+
+function arrowHeadWidth(strokeWidth: number): number {
+  return Math.max(10, strokeWidth * 3.25);
 }
 
 function findShapeNode(
   target: KonvaNode | null | undefined,
+  shapeIds: ReadonlySet<string>,
 ): KonvaNode | null {
   let n: KonvaNode | null = target ?? null;
-  while (n && !isShapeNode(n)) n = n.getParent();
-  return n;
+  while (n) {
+    if (shapeIds.has(n.id())) return n;
+    n = n.getParent();
+  }
+  return null;
 }
 
-function isShapeNode(n: KonvaNode): boolean {
-  if (
-    !(n instanceof Konva.Rect) &&
-    !(n instanceof Konva.Ellipse) &&
-    !(n instanceof Konva.Arrow) &&
-    !(n instanceof Konva.Path) &&
-    !(n instanceof Konva.Text) &&
-    !(n instanceof Konva.Line)
-  ) {
-    return false;
+function isTransformerTarget(target: KonvaNode | null | undefined): boolean {
+  let node: KonvaNode | null = target ?? null;
+  while (node) {
+    if (node instanceof Konva.Transformer) return true;
+    node = node.getParent();
   }
-  const id = n.id();
-  return (
-    typeof id === "string" && id.length > 0 && !id.startsWith("__")
-  );
+  return false;
+}
+
+type Bounds = { x: number; y: number; width: number; height: number };
+
+function shapeBounds(shape: Shape): Bounds | null {
+  if (shape.type === "rect") {
+    return {
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+    };
+  }
+  if (shape.type === "ellipse") {
+    return {
+      x: shape.x,
+      y: shape.y,
+      width: Math.abs(shape.width),
+      height: Math.abs(shape.height),
+    };
+  }
+  if (shape.type === "text") {
+    const h = shape.fontSize * 1.2;
+    return {
+      x: shape.x,
+      y: shape.y - shape.fontSize,
+      width: shape.width ?? 200,
+      height: h,
+    };
+  }
+  if (shape.type === "arrow") {
+    if (shape.points.length === 0) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of shape.points) {
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+    }
+    const pad = arrowHeadLength(shape.strokeWidth) + shape.strokeWidth;
+    return {
+      x: shape.x + minX - pad,
+      y: shape.y + minY - pad,
+      width: maxX - minX + pad * 2,
+      height: maxY - minY + pad * 2,
+    };
+  }
+  if (shape.type === "pen") {
+    if (shape.points.length === 0) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of shape.points) {
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+    }
+    const pad = shape.size / 2;
+    return {
+      x: shape.x + minX - pad,
+      y: shape.y + minY - pad,
+      width: maxX - minX + pad * 2,
+      height: maxY - minY + pad * 2,
+    };
+  }
+  return null;
+}
+
+function magnetSnap(
+  wx: number,
+  wy: number,
+  shapes: ReadonlyArray<Shape>,
+  threshold: number,
+  excludeId?: string,
+): { shapeId: string; point: { x: number; y: number } } | null {
+  let best: { shapeId: string; x: number; y: number; dist: number } | null = null;
+  for (const shape of shapes) {
+    if (shape.id === excludeId) continue;
+    const b = shapeBounds(shape);
+    if (!b) continue;
+    // Clamp the pointer to the bounding box — the nearest point on the box
+    // edge to the pointer. If the pointer is inside the box, this returns
+    // the pointer itself, which is the "snap to interior" case.
+    const cx = Math.max(b.x, Math.min(wx, b.x + b.width));
+    const cy = Math.max(b.y, Math.min(wy, b.y + b.height));
+    const dx = wx - cx;
+    const dy = wy - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= threshold && (!best || dist < best.dist)) {
+      best = { shapeId: shape.id, x: cx, y: cy, dist };
+    }
+  }
+  return best ? { shapeId: best.shapeId, point: { x: best.x, y: best.y } } : null;
 }
 
 function hitShapeExpanded(
@@ -960,7 +1553,7 @@ function pointInArrow(
   }
   const last = shape.points[shape.points.length - 1]!;
   const prev = shape.points[shape.points.length - 2]!;
-  const head = ARROW_HEAD_SIZE;
+  const head = arrowHeadLength(shape.strokeWidth);
   const dx = last[0] - prev[0];
   const dy = last[1] - prev[1];
   const len = Math.hypot(dx, dy) || 1;
@@ -970,10 +1563,11 @@ function pointInArrow(
   const baseY = last[1] - uy * head;
   const px = -uy;
   const py = ux;
-  const a1x = baseX + px * head * 0.6;
-  const a1y = baseY + py * head * 0.6;
-  const a2x = baseX - px * head * 0.6;
-  const a2y = baseY - py * head * 0.6;
+  const halfWidth = arrowHeadWidth(shape.strokeWidth) / 2;
+  const a1x = baseX + px * halfWidth;
+  const a1y = baseY + py * halfWidth;
+  const a2x = baseX - px * halfWidth;
+  const a2y = baseY - py * halfWidth;
   return pointInTriangle(lx, ly, a1x, a1y, last[0], last[1], a2x, a2y);
 }
 
@@ -1014,7 +1608,7 @@ function distanceToSegment(
   return Math.hypot(px - x, py - y);
 }
 
-function cursorForTool(tool: Tool, hasSelection: boolean): string {
+function cursorForTool(tool: Tool): string {
   switch (tool) {
     case "pan":
       return "grab";
@@ -1022,12 +1616,13 @@ function cursorForTool(tool: Tool, hasSelection: boolean): string {
     case "rect":
     case "ellipse":
     case "arrow":
-    case "text":
       return "crosshair";
+    case "text":
+      return "text";
     case "eraser":
       return "cell";
     case "select":
     default:
-      return hasSelection ? "move" : "default";
+      return "default";
   }
 }

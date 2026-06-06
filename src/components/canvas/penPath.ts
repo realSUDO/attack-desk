@@ -15,6 +15,12 @@ export function getPenPathData(
     simulatePressure: true,
     last: true,
   });
+  return strokeToPath(stroke);
+}
+
+function strokeToPath(
+  stroke: ReadonlyArray<readonly [number, number, ...number[]]>,
+): string {
   if (stroke.length === 0) return "";
   const d: Array<string> = [];
   d.push(`M ${stroke[0]![0].toFixed(2)} ${stroke[0]![1].toFixed(2)}`);

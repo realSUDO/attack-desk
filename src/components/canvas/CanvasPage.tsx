@@ -14,7 +14,6 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import {
   deleteCanvasAction,
-  saveCanvasAction,
   unlinkMissionFromCanvasAction,
 } from "@/actions/canvas.actions";
 
@@ -27,6 +26,7 @@ import { useScene } from "./store";
 import {
   type Scene,
   type Shape,
+  type TextShape,
   type Tool,
   type ToolDefaults,
   DEFAULT_TOOL_DEFAULTS,
@@ -65,6 +65,11 @@ const TOOL_KEYBINDS: Record<string, Tool> = {
   e: "eraser",
 };
 
+type TextEditorShape = Pick<
+  TextShape,
+  "id" | "x" | "y" | "text" | "fontSize" | "width" | "align"
+>;
+
 export function CanvasPage({
   canvasId,
   initialTitle,
@@ -77,19 +82,28 @@ export function CanvasPage({
   const [title, setTitle] = useState(initialTitle);
   const [tool, setTool] = useState<Tool>("select");
   const [selectedIds, setSelectedIds] = useState<ReadonlyArray<string>>([]);
-  const [isSaving, startSave] = useTransition();
+  const [isSaving, setIsSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [lastSavedScene, setLastSavedScene] = useState<Scene>(initialScene);
   const [lastSavedTitle, setLastSavedTitle] = useState<string>(initialTitle);
-  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [textEditor, setTextEditor] = useState<{
+    shape: TextEditorShape;
+    isNew: boolean;
+  } | null>(null);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [isDeleting, startDelete] = useTransition();
   const [toolDefaults, setToolDefaults] = useState<ToolDefaults>(DEFAULT_TOOL_DEFAULTS);
   const [contextMenu, setContextMenu] = useState<
-    | { x: number; y: number; ids: ReadonlyArray<string> }
+    | {
+        x: number;
+        y: number;
+        kind: "canvas" | "shapes";
+        ids: ReadonlyArray<string>;
+      }
     | null
   >(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const saveSequenceRef = useRef(0);
 
   const selectedShapes = useMemo<ReadonlyArray<Shape>>(() => {
     const set = new Set(selectedIds);
@@ -102,17 +116,32 @@ export function CanvasPage({
   );
 
   const handleSave = useCallback(() => {
-    startSave(async () => {
-      const formData = new FormData();
-      formData.set("title", title);
-      formData.set("data", JSON.stringify(api.scene));
-      const result = await saveCanvasAction(canvasId, formData);
-      if (result.success) {
-        setLastSavedScene(api.scene);
-        setLastSavedTitle(title);
+    const sceneSnapshot = api.scene;
+    const titleSnapshot = title;
+    const sequence = ++saveSequenceRef.current;
+    setIsSaving(true);
+
+    void fetch(`/api/canvases/${encodeURIComponent(canvasId)}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({ title: titleSnapshot, data: sceneSnapshot }),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("Canvas save failed");
+        if (saveSequenceRef.current !== sequence) return;
+        setLastSavedScene(sceneSnapshot);
+        setLastSavedTitle(titleSnapshot);
         setLastSavedAt(new Date());
-      }
-    });
+      })
+      .catch(() => {
+        // Keep the editor dirty so the next autosave or manual save retries.
+      })
+      .finally(() => {
+        if (saveSequenceRef.current === sequence) setIsSaving(false);
+      });
   }, [api.scene, canvasId, title]);
 
   useEffect(() => {
@@ -124,32 +153,68 @@ export function CanvasPage({
   }, [isDirty, handleSave]);
 
   const handleRequestTextEdit = useCallback(
-    (id: string) => {
-      if (id === "") {
-        if (editingTextId) {
-          const shape = api.scene.shapes.find((s) => s.id === editingTextId);
-          if (shape?.type === "text") {
-            const trimmed = shape.text.trim();
-            if (trimmed === "") {
-              api.removeShapes([editingTextId]);
-            } else if (shape.text !== trimmed) {
-              api.updateShape(editingTextId, { text: trimmed });
-            }
-          }
-        }
-        setEditingTextId(null);
-        return;
-      }
-      setEditingTextId(id);
+    (shape: TextEditorShape, isNew = false) => {
+      setSelectedIds([shape.id]);
+      setTextEditor({ shape, isNew });
     },
-    [api, editingTextId],
+    [],
   );
 
-  const updateTextLive = useCallback(
-    (id: string, text: string) => {
-      api.updateShape(id, { text });
+  const handleCreateText = useCallback(
+    (clientX: number, clientY: number) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const bounds = container.getBoundingClientRect();
+      const x =
+        (clientX - bounds.left - api.scene.camera.x) /
+        api.scene.camera.zoom;
+      const y =
+        (clientY - bounds.top - api.scene.camera.y) /
+        api.scene.camera.zoom;
+      const textShape = {
+        type: "text" as const,
+        x,
+        y,
+        rotation: 0,
+        groupId: null,
+        stroke: toolDefaults.stroke,
+        fill: "transparent",
+        fillPattern: "none" as const,
+        strokeWidth: 0,
+        text: "",
+        fontSize: toolDefaults.fontSize,
+        width: 200,
+        align: toolDefaults.textAlign,
+      };
+      const id = api.addShape(textShape);
+      handleRequestTextEdit({ ...textShape, id }, true);
+      setTool("select");
     },
-    [api],
+    [
+      api,
+      handleRequestTextEdit,
+      toolDefaults.fontSize,
+      toolDefaults.stroke,
+      toolDefaults.textAlign,
+    ],
+  );
+
+  const commitTextEdit = useCallback(
+    (text: string) => {
+      if (!textEditor) return;
+      const trimmed = text.trim();
+      if (trimmed === "") {
+        api.removeShapes([textEditor.shape.id]);
+        setSelectedIds([]);
+      } else if (trimmed !== textEditor.shape.text) {
+        const update = textEditor.isNew
+          ? api.updateShapeTransient
+          : api.updateShape;
+        update(textEditor.shape.id, { text: trimmed });
+      }
+      setTextEditor(null);
+    },
+    [api, textEditor],
   );
 
   useEffect(() => {
@@ -324,16 +389,27 @@ export function CanvasPage({
       point: { sx: number; sy: number; wx: number; wy: number },
       ids: ReadonlyArray<string>,
     ) => {
-      if (ids.length === 0) return;
-      setSelectedIds(ids);
-      setContextMenu({ x: point.sx, y: point.sy, ids });
+      if (ids.length > 0) setSelectedIds(ids);
+      setContextMenu({
+        x: point.sx,
+        y: point.sy,
+        kind: ids.length > 0 ? "shapes" : "canvas",
+        ids,
+      });
     },
     [],
   );
 
-  const editingShape = editingTextId
-    ? api.scene.shapes.find((s) => s.id === editingTextId)
-    : null;
+  const handleSetSelectedIds = useCallback(
+    (ids: ReadonlyArray<string>, additive = false) => {
+      if (additive) {
+        setSelectedIds((prev) => Array.from(new Set([...prev, ...ids])));
+      } else {
+        setSelectedIds(ids);
+      }
+    },
+    [],
+  );
 
   return (
     <div className="bg-background flex h-screen overflow-hidden">
@@ -357,28 +433,34 @@ export function CanvasPage({
               api={api}
               tool={tool}
               selectedIds={selectedIds}
-              setSelectedIds={(ids, additive) => {
-                if (additive) {
-                  setSelectedIds((prev) => Array.from(new Set([...prev, ...ids])));
-                } else {
-                  setSelectedIds(ids);
-                }
-              }}
+              setSelectedIds={handleSetSelectedIds}
               toolDefaults={toolDefaults}
-              onToolChange={setTool}
               onRequestTextEdit={handleRequestTextEdit}
               onContextMenuEvent={handleShowContextMenu}
               containerRef={containerRef}
+              editingTextId={textEditor?.shape.id ?? null}
             />
 
-            {editingShape?.type === "text" && (
+            {tool === "text" && !textEditor && (
+              <div
+                className="absolute inset-0 z-20 cursor-text"
+                aria-label="Place text on canvas"
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  event.preventDefault();
+                  handleCreateText(event.clientX, event.clientY);
+                }}
+              />
+            )}
+
+            {textEditor && (
               <TextEditorOverlay
-                shape={editingShape}
+                key={textEditor.shape.id}
+                shape={textEditor.shape}
                 zoom={api.scene.camera.zoom}
                 cameraX={api.scene.camera.x}
                 cameraY={api.scene.camera.y}
-                onChange={(text) => updateTextLive(editingShape.id, text)}
-                onCommit={() => handleRequestTextEdit("")}
+                onCommit={commitTextEdit}
               />
             )}
 
@@ -409,6 +491,7 @@ export function CanvasPage({
           <CanvasInspector
             canvasTitle={title}
             onTitleChange={setTitle}
+            tool={tool}
             selection={selectedShapes}
             toolDefaults={toolDefaults}
             onUpdateToolDefaults={handleUpdateToolDefaults}
@@ -453,27 +536,39 @@ export function CanvasPage({
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={contextMenuItems({
-            ids: contextMenu.ids,
-            shapes: api.scene.shapes,
-            onBringToFront: (id) => api.bringToFront(id),
-            onBringForward: (id) => api.bringForward(id),
-            onSendBackward: (id) => api.sendBackward(id),
-            onSendToBack: (id) => api.sendToBack(id),
-            onGroup: () => api.groupShapes(contextMenu.ids),
-            onUngroup: () => {
-              const first = api.scene.shapes.find((s) => s.id === contextMenu.ids[0]);
-              if (first?.groupId) api.ungroupShapes(first.groupId);
-            },
-            onDuplicate: () => {
-              const newIds = api.duplicateShapes(contextMenu.ids, 8);
-              setSelectedIds(newIds);
-            },
-            onDelete: () => {
-              api.removeShapes(contextMenu.ids);
-              setSelectedIds([]);
-            },
-          })}
+          items={
+            contextMenu.kind === "canvas"
+              ? canvasContextMenuItems({
+                  onPanTool: () => setTool("pan"),
+                  onSelectAll: () =>
+                    setSelectedIds(api.scene.shapes.map((shape) => shape.id)),
+                  onResetView: () =>
+                    api.setCamera({ x: 0, y: 0, zoom: 1 }),
+                })
+              : contextMenuItems({
+                  ids: contextMenu.ids,
+                  shapes: api.scene.shapes,
+                  onBringToFront: (id) => api.bringToFront(id),
+                  onBringForward: (id) => api.bringForward(id),
+                  onSendBackward: (id) => api.sendBackward(id),
+                  onSendToBack: (id) => api.sendToBack(id),
+                  onGroup: () => api.groupShapes(contextMenu.ids),
+                  onUngroup: () => {
+                    const first = api.scene.shapes.find(
+                      (s) => s.id === contextMenu.ids[0],
+                    );
+                    if (first?.groupId) api.ungroupShapes(first.groupId);
+                  },
+                  onDuplicate: () => {
+                    const newIds = api.duplicateShapes(contextMenu.ids, 8);
+                    setSelectedIds(newIds);
+                  },
+                  onDelete: () => {
+                    api.removeShapes(contextMenu.ids);
+                    setSelectedIds([]);
+                  },
+                })
+          }
           onClose={() => setContextMenu(null)}
         />
       )}
@@ -518,17 +613,24 @@ function TextEditorOverlay({
   zoom,
   cameraX,
   cameraY,
-  onChange,
   onCommit,
 }: {
-  shape: { id: string; x: number; y: number; text: string; fontSize: number };
+  shape: {
+    id: string;
+    x: number;
+    y: number;
+    text: string;
+    fontSize: number;
+    width?: number;
+    align?: TextShape["align"];
+  };
   zoom: number;
   cameraX: number;
   cameraY: number;
-  onChange: (text: string) => void;
-  onCommit: () => void;
+  onCommit: (text: string) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [draft, setDraft] = useState(shape.text);
   useEffect(() => {
     if (ref.current) {
       ref.current.focus();
@@ -540,35 +642,44 @@ function TextEditorOverlay({
     if (!ref.current) return;
     ref.current.style.height = "auto";
     ref.current.style.height = `${ref.current.scrollHeight}px`;
-  }, [shape.text]);
+  }, [draft]);
   return (
     <textarea
       ref={ref}
-      defaultValue={shape.text}
-      onChange={(e) => onChange(e.target.value)}
-      onBlur={onCommit}
+      autoFocus
+      value={draft}
+      onPointerDown={(e) => e.stopPropagation()}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => onCommit(draft)}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.preventDefault();
-          onCommit();
+          e.currentTarget.blur();
         } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
           e.preventDefault();
-          onCommit();
+          e.currentTarget.blur();
         }
       }}
       placeholder="Type something…"
-      className="text-headline-md border-primary absolute resize-none border-2 focus:outline-hidden"
+      className="focus:outline-hidden absolute resize-none overflow-hidden border-0 bg-transparent"
       style={{
         left: shape.x * zoom + cameraX,
-        top: shape.y * zoom + cameraY - shape.fontSize * zoom * 0.2,
+        top: shape.y * zoom + cameraY,
         fontSize: `${shape.fontSize * zoom}px`,
         lineHeight: 1.2,
-        minWidth: "120px",
+        width: `${(shape.width ?? 200) * zoom}px`,
+        minWidth: "160px",
+        minHeight: `${shape.fontSize * zoom * 1.4}px`,
         color: "#1e1b15",
-        fontFamily: "var(--font-hanken-grotesk), sans-serif",
-        fontWeight: 500,
-        background: "rgba(255, 248, 241, 0.96)",
+        caretColor: "#1e1b15",
+        fontFamily: "var(--font-schoolbell), cursive",
+        fontWeight: 400,
+        textAlign: shape.align ?? "left",
+        background: "transparent",
+        outline: "none",
         padding: 0,
+        zIndex: 50,
+        pointerEvents: "auto",
       }}
     />
   );
@@ -675,6 +786,57 @@ function contextMenuItems({
         shortcut: "⌫",
         onClick: onDelete,
         destructive: true,
+      },
+    },
+  ];
+}
+
+function canvasContextMenuItems({
+  onPanTool,
+  onSelectAll,
+  onResetView,
+}: {
+  onPanTool: () => void;
+  onSelectAll: () => void;
+  onResetView: () => void;
+}): ReadonlyArray<
+  | {
+      kind: "item";
+      item: {
+        label: string;
+        icon: string;
+        shortcut?: string;
+        onClick: () => void;
+      };
+    }
+  | { kind: "divider" }
+> {
+  return [
+    {
+      kind: "item",
+      item: {
+        label: "Grab Tool",
+        icon: "pan_tool",
+        shortcut: "H",
+        onClick: onPanTool,
+      },
+    },
+    {
+      kind: "item",
+      item: {
+        label: "Select All",
+        icon: "select_all",
+        shortcut: "⌘A",
+        onClick: onSelectAll,
+      },
+    },
+    { kind: "divider" },
+    {
+      kind: "item",
+      item: {
+        label: "Reset View",
+        icon: "center_focus_strong",
+        onClick: onResetView,
       },
     },
   ];

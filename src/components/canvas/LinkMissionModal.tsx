@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import { linkMissionToCanvasAction } from "@/actions/canvas.actions";
@@ -20,8 +21,10 @@ type Props = {
 };
 
 export function LinkMissionModal({ canvasId, open, onClose, missions }: Props) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -52,9 +55,15 @@ export function LinkMissionModal({ canvasId, open, onClose, missions }: Props) {
 
   const handleLink = async (missionId: string) => {
     setPendingId(missionId);
-    await linkMissionToCanvasAction(canvasId, missionId);
+    setError(null);
+    const result = await linkMissionToCanvasAction(canvasId, missionId);
     setPendingId(null);
+    if (!result.success) {
+      setError(result.message);
+      return;
+    }
     onClose();
+    router.refresh();
   };
 
   return (
@@ -86,6 +95,11 @@ export function LinkMissionModal({ canvasId, open, onClose, missions }: Props) {
           />
         </div>
         <div className="max-h-80 overflow-y-auto">
+          {error && (
+            <p role="alert" className="border-error text-error border-b p-sm text-sm">
+              {error}
+            </p>
+          )}
           {filtered.length === 0 ? (
             <div className="text-on-surface-variant font-body-md p-md text-center">
               No matching missions.

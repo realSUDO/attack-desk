@@ -21,6 +21,7 @@ type Action =
   | { type: "set"; scene: Scene }
   | { type: "add"; shape: Shape }
   | { type: "update"; id: string; patch: Partial<Shape> }
+  | { type: "update_transient"; id: string; patch: Partial<Shape> }
   | { type: "updateMany"; updates: ReadonlyArray<{ id: string; patch: Partial<Shape> }> }
   | { type: "remove"; ids: ReadonlyArray<string> }
   | { type: "translate"; ids: ReadonlyArray<string>; dx: number; dy: number }
@@ -89,6 +90,16 @@ function reducer(state: State, action: Action): State {
           shapes.map((s) => (s.id === action.id ? ({ ...s, ...action.patch } as Shape) : s)),
         ),
       );
+    }
+    case "update_transient": {
+      return {
+        ...state,
+        present: updateShapesInScene(state.present, (shapes) =>
+          shapes.map((s) =>
+            s.id === action.id ? ({ ...s, ...action.patch } as Shape) : s,
+          ),
+        ),
+      };
     }
     case "updateMany": {
       const updateMap = new Map(action.updates.map((u) => [u.id, u.patch]));
@@ -219,6 +230,7 @@ export type SceneApi = {
   setScene: (scene: Scene) => void;
   addShape: (shape: Omit<Shape, "id" | "z">) => string;
   updateShape: (id: string, patch: Partial<Shape>) => void;
+  updateShapeTransient: (id: string, patch: Partial<Shape>) => void;
   updateMany: (updates: ReadonlyArray<{ id: string; patch: Partial<Shape> }>) => void;
   removeShapes: (ids: ReadonlyArray<string>) => void;
   translateShapes: (ids: ReadonlyArray<string>, dx: number, dy: number) => void;
@@ -268,30 +280,106 @@ export function useScene(initial: Scene): SceneApi {
     [],
   );
 
+  const setScene = useCallback((scene: Scene) => {
+    dispatch({ type: "set", scene });
+  }, []);
+  const updateShape = useCallback((id: string, patch: Partial<Shape>) => {
+    dispatch({ type: "update", id, patch });
+  }, []);
+  const updateShapeTransient = useCallback(
+    (id: string, patch: Partial<Shape>) => {
+      dispatch({ type: "update_transient", id, patch });
+    },
+    [],
+  );
+  const updateMany = useCallback(
+    (updates: ReadonlyArray<{ id: string; patch: Partial<Shape> }>) => {
+      dispatch({ type: "updateMany", updates });
+    },
+    [],
+  );
+  const removeShapes = useCallback((ids: ReadonlyArray<string>) => {
+    dispatch({ type: "remove", ids });
+  }, []);
+  const translateShapes = useCallback(
+    (ids: ReadonlyArray<string>, dx: number, dy: number) => {
+      dispatch({ type: "translate", ids, dx, dy });
+    },
+    [],
+  );
+  const setCamera = useCallback((patch: Partial<Camera>) => {
+    dispatch({ type: "camera", patch });
+  }, []);
+  const bringToFront = useCallback((id: string) => {
+    dispatch({ type: "reorder", id, to: "front" });
+  }, []);
+  const sendToBack = useCallback((id: string) => {
+    dispatch({ type: "reorder", id, to: "back" });
+  }, []);
+  const bringForward = useCallback((id: string) => {
+    dispatch({ type: "reorder", id, to: "forward" });
+  }, []);
+  const sendBackward = useCallback((id: string) => {
+    dispatch({ type: "reorder", id, to: "backward" });
+  }, []);
+  const ungroupShapes = useCallback((groupId: string) => {
+    dispatch({ type: "ungroup", groupId });
+  }, []);
+  const beginCoalesce = useCallback(() => {
+    dispatch({ type: "begin_coalesce" });
+  }, []);
+  const endCoalesce = useCallback(() => {
+    dispatch({ type: "end_coalesce" });
+  }, []);
+  const undo = useCallback(() => dispatch({ type: "undo" }), []);
+  const redo = useCallback(() => dispatch({ type: "redo" }), []);
+
   return useMemo<SceneApi>(
     () => ({
       scene: state.present,
       canUndo: state.past.length > 0,
       canRedo: state.future.length > 0,
-      setScene: (scene) => dispatch({ type: "set", scene }),
+      setScene,
       addShape,
-      updateShape: (id, patch) => dispatch({ type: "update", id, patch }),
-      updateMany: (updates) => dispatch({ type: "updateMany", updates }),
-      removeShapes: (ids) => dispatch({ type: "remove", ids }),
-      translateShapes: (ids, dx, dy) => dispatch({ type: "translate", ids, dx, dy }),
-      setCamera: (patch) => dispatch({ type: "camera", patch }),
-      bringToFront: (id) => dispatch({ type: "reorder", id, to: "front" }),
-      sendToBack: (id) => dispatch({ type: "reorder", id, to: "back" }),
-      bringForward: (id) => dispatch({ type: "reorder", id, to: "forward" }),
-      sendBackward: (id) => dispatch({ type: "reorder", id, to: "backward" }),
+      updateShape,
+      updateShapeTransient,
+      updateMany,
+      removeShapes,
+      translateShapes,
+      setCamera,
+      bringToFront,
+      sendToBack,
+      bringForward,
+      sendBackward,
       groupShapes,
-      ungroupShapes: (groupId) => dispatch({ type: "ungroup", groupId }),
+      ungroupShapes,
       duplicateShapes,
-      beginCoalesce: () => dispatch({ type: "begin_coalesce" }),
-      endCoalesce: () => dispatch({ type: "end_coalesce" }),
-      undo: () => dispatch({ type: "undo" }),
-      redo: () => dispatch({ type: "redo" }),
+      beginCoalesce,
+      endCoalesce,
+      undo,
+      redo,
     }),
-    [state, addShape, groupShapes, duplicateShapes],
+    [
+      state,
+      setScene,
+      addShape,
+      updateShape,
+      updateShapeTransient,
+      updateMany,
+      removeShapes,
+      translateShapes,
+      setCamera,
+      bringToFront,
+      sendToBack,
+      bringForward,
+      sendBackward,
+      groupShapes,
+      ungroupShapes,
+      duplicateShapes,
+      beginCoalesce,
+      endCoalesce,
+      undo,
+      redo,
+    ],
   );
 }

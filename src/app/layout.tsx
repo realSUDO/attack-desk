@@ -1,5 +1,11 @@
 import type { Metadata } from "next";
-import { Hanken_Grotesk, Geist, Geist_Mono } from "next/font/google";
+import {
+  Hanken_Grotesk,
+  Geist,
+  Geist_Mono,
+} from "next/font/google";
+
+import { schoolbell } from "@/lib/fonts";
 
 import "./globals.css";
 
@@ -38,7 +44,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${hankenGrotesk.variable} ${geist.variable} ${geistMono.variable}`}
+      className={`${hankenGrotesk.variable} ${geist.variable} ${geistMono.variable} ${schoolbell.variable}`}
     >
       <head>
         {/* eslint-disable-next-line @next/next/no-page-custom-font -- App Router: external font stylesheet, not a pages-router <link> */}
@@ -48,7 +54,10 @@ export default function RootLayout({
         />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
       </head>
-      <body className="font-body-md text-body-md bg-background text-on-surface">
+      <body
+        className="font-body-md text-body-md bg-background text-on-surface"
+        suppressHydrationWarning
+      >
         {children}
       </body>
     </html>

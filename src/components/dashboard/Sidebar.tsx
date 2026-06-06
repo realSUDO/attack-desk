@@ -17,6 +17,7 @@ const navItems: ReadonlyArray<NavItem> = [
   { href: "/board", label: "Missions", icon: "assignment" },
   { href: "/post-lab", label: "Content", icon: "edit_note" },
   { href: "/canvas", label: "Canvas", icon: "auto_fix_high" },
+  { href: "/weekly-review", label: "Review", icon: "rate_review" },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -56,18 +57,11 @@ export function Sidebar() {
 
       <div className="mt-auto flex flex-col items-center gap-sm">
         <Link
-          href="#"
-          aria-label="Settings"
+          href="/showcase"
+          aria-label="Showcase"
           className="text-on-surface-variant hover:text-on-surface flex h-12 w-full flex-col items-center justify-center transition-colors duration-200"
         >
-          <MaterialIcon name="settings" size={20} />
-        </Link>
-        <Link
-          href="#"
-          aria-label="Help"
-          className="text-on-surface-variant hover:text-on-surface flex h-12 w-full flex-col items-center justify-center transition-colors duration-200"
-        >
-          <MaterialIcon name="help_outline" size={20} />
+          <MaterialIcon name="analytics" size={20} />
         </Link>
       </div>
     </aside>

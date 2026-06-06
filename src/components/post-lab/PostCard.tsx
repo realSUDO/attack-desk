@@ -84,11 +84,13 @@ export function PostCard({ post, onSelect }: Props) {
         {text}
       </p>
       {isPosted && (
-        <span className="font-metadata text-on-surface-variant text-[10px] uppercase">
+        <span
+          suppressHydrationWarning
+          className="font-metadata text-on-surface-variant text-[10px] uppercase"
+        >
           {relativeTime(post.updatedAt)}
         </span>
       )}
     </div>
   );
 }
-

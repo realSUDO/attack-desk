@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 
 import {
+  canvasExists,
   deleteCanvas,
   getCanvasById,
   updateCanvas,
@@ -45,7 +46,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const input = updateCanvasSchema.parse(await request.json());
-    const existing = await getCanvasById(id);
+    const existing = await canvasExists(id);
 
     if (!existing) {
       return errorResponse(
@@ -56,6 +57,9 @@ export async function PATCH(
     }
 
     const canvas = await updateCanvas(id, input);
+    if (request.headers.get("prefer") === "return=minimal") {
+      return new Response(null, { status: 204 });
+    }
     return successResponse(canvas, "Canvas updated successfully");
   } catch (error) {
     if (error instanceof ZodError) {

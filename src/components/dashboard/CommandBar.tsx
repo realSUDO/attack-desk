@@ -1,19 +1,9 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { useSyncExternalStore } from "react";
 
 import { MaterialIcon } from "../landing/icons/MaterialIcon";
-
-function getInitialDate(): string {
-  if (typeof window === "undefined") return "";
-  return new Date()
-    .toLocaleDateString("en-US", {
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-    })
-    .toUpperCase();
-}
 
 function subscribeToDark(callback: () => void): () => void {
   const observer = new MutationObserver(callback);
@@ -32,8 +22,11 @@ function getServerSnapshot(): boolean {
   return false;
 }
 
-export function CommandBar() {
-  const [date] = useState(getInitialDate);
+type Props = {
+  sessionDate: string;
+};
+
+export function CommandBar({ sessionDate }: Props) {
   const dark = useSyncExternalStore(
     subscribeToDark,
     getDarkSnapshot,
@@ -54,8 +47,10 @@ export function CommandBar() {
           <span className="font-metadata text-metadata mr-sm uppercase tracking-widest">
             Session:
           </span>
-          <span className="font-metadata text-metadata text-on-surface">
-            {date}
+          <span
+            className="font-metadata text-metadata text-on-surface"
+          >
+            {sessionDate}
           </span>
         </div>
       </div>
@@ -73,13 +68,13 @@ export function CommandBar() {
           />
         </button>
         <div className="bg-outline-variant h-4 w-px" />
-        <button
-          type="button"
+        <Link
+          href="/board"
           className="bg-primary text-on-primary font-label-md text-label-md active:scale-95 flex items-center gap-sm px-lg py-sm uppercase tracking-wider transition-transform"
         >
           <MaterialIcon name="add" size={14} />
           New Mission
-        </button>
+        </Link>
       </div>
     </header>
   );

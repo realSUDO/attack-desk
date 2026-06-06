@@ -77,7 +77,7 @@ export function MissionCard({ mission, onSelect }: Props) {
             {style.label}
           </span>
         )}
-        <MaterialIcon name="more_horiz" size={14} />
+        <MaterialIcon name="edit" size={14} />
       </div>
       <h3
         className={`font-headline-md text-sm font-bold ${
@@ -93,7 +93,12 @@ export function MissionCard({ mission, onSelect }: Props) {
           }`}
         >
           <MaterialIcon name="schedule" size={14} />
-          <span className="font-label-sm text-[11px]">{dueLabel}</span>
+          <span
+            suppressHydrationWarning
+            className="font-label-sm text-[11px]"
+          >
+            {dueLabel}
+          </span>
         </div>
         {mission.deadline && (
           <div className="text-on-surface-variant flex items-center gap-xs">

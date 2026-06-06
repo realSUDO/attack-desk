@@ -28,9 +28,15 @@ DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require"
 
 ```bash
 npm install
+docker compose up -d
 npx prisma generate
-npx prisma migrate dev
+npm run db:migrate
+npm run db:seed
 ```
+
+Local development uses the PostgreSQL container in `compose.yaml`. Vercel
+deployments should set `DATABASE_URL` to the Neon pooled connection string.
+Run `npm run db:deploy` during deployment before serving the application.
 
 ## Run Locally
 

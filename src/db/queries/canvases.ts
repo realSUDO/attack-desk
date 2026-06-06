@@ -49,6 +49,13 @@ export function getCanvasById(id: string) {
   });
 }
 
+export function canvasExists(id: string) {
+  return prisma.canvas.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+}
+
 export function createCanvas({ data, ...rest }: CanvasInput) {
   return prisma.canvas.create({
     data: {
