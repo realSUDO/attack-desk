@@ -1,119 +1,109 @@
 # AttackDesk
 
-## Project Overview
+A visual execution workspace for missions, deadlines, post ideas, canvases, and weekly reviews.
 
-AttackDesk is a visual execution workspace for missions, deadlines, post
-ideas, canvases, and weekly reviews. This repository currently provides the
-backend foundation and minimal rendering-strategy demonstration pages.
+**Live → [attack.sudohq.me](https://attack.sudohq.me)**
 
-## Tech Stack
+---
 
-- Next.js App Router
-- TypeScript
-- Prisma
-- PostgreSQL / Neon
-- Zod
-- Server Actions
-- Route Handlers
+## Stack
 
-## Environment Variables
+- **Next.js 16** — App Router, Server Actions, Route Handlers
+- **Prisma 6** — ORM with PostgreSQL
+- **Neon** — serverless Postgres (production)
+- **Zod 4** — validation
+- **Konva / react-konva** — canvas editor
+- **Tailwind CSS 4**
 
-Create `.env` from `.env.example` and set a real PostgreSQL connection:
+---
+
+## Features
+
+- **Mission Board** — track tasks across PLANNED / DOING / DONE with priorities and deadlines
+- **Deadline Radar** — upcoming deadlines sorted by priority and due date
+- **Post Lab** — content pipeline from idea → draft → ready → posted
+- **Canvas** — freehand drawing and shape editor linked to missions
+- **Weekly Review** — structured reflection with went-right / went-wrong / next-plan
+- **Dashboard** — live stats across all workstreams
+
+---
+
+## Local Development
 
 ```bash
-DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require"
-```
-
-## Database Setup
-
-```bash
+# 1. Install dependencies
 npm install
+
+# 2. Copy env and set DATABASE_URL
+cp .env.example .env
+
+# 3. Start Postgres
 docker compose up -d
+
+# 4. Run migrations and generate Prisma client
+npx prisma migrate dev
 npx prisma generate
-npm run db:migrate
+
+# 5. Seed demo data
 npm run db:seed
-```
 
-Local development uses the PostgreSQL container in `compose.yaml`. Vercel
-deployments should set `DATABASE_URL` to the Neon pooled connection string.
-Run `npm run db:deploy` during deployment before serving the application.
-
-## Run Locally
-
-```bash
+# 6. Start dev server
 npm run dev
 ```
 
+Open [http://localhost:3000](http://localhost:3000).
+
+---
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+
+Local default (matches `compose.yaml`):
+```
+DATABASE_URL="postgresql://attackdesk:attackdesk@localhost:5432/attackdesk?schema=public"
+```
+
+---
+
 ## API Routes
 
-- `GET /api/missions`
-- `POST /api/missions`
-- `GET /api/missions/[id]`
-- `PATCH /api/missions/[id]`
-- `DELETE /api/missions/[id]`
-- `GET /api/deadlines`
-- `POST /api/deadlines`
-- `GET /api/deadlines/[id]`
-- `PATCH /api/deadlines/[id]`
-- `DELETE /api/deadlines/[id]`
-- `GET /api/posts`
-- `POST /api/posts`
-- `GET /api/posts/[id]`
-- `PATCH /api/posts/[id]`
-- `DELETE /api/posts/[id]`
-- `GET /api/canvases`
-- `POST /api/canvases`
-- `GET /api/canvases/[id]`
-- `PATCH /api/canvases/[id]`
-- `DELETE /api/canvases/[id]`
-- `GET /api/weekly-reviews`
-- `POST /api/weekly-reviews`
-- `GET /api/weekly-reviews/[id]`
-- `PATCH /api/weekly-reviews/[id]`
-- `DELETE /api/weekly-reviews/[id]`
+All routes return `{ success, message, data }`.
 
-## Server Actions
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET / POST | `/api/missions` | List or create missions |
+| GET / PATCH / DELETE | `/api/missions/[id]` | Get, update, or delete a mission |
+| GET / POST | `/api/deadlines` | List or create deadlines |
+| GET / PATCH / DELETE | `/api/deadlines/[id]` | Get, update, or delete a deadline |
+| GET / POST | `/api/posts` | List or create post ideas |
+| GET / PATCH / DELETE | `/api/posts/[id]` | Get, update, or delete a post |
+| GET / POST | `/api/canvases` | List or create canvases |
+| GET / PATCH / DELETE | `/api/canvases/[id]` | Get, update, or delete a canvas |
+| GET / POST | `/api/weekly-reviews` | List or create weekly reviews |
+| GET / PATCH / DELETE | `/api/weekly-reviews/[id]` | Get, update, or delete a review |
 
-- `src/actions/mission.actions.ts`: create, update, complete, delete
-- `src/actions/deadline.actions.ts`: create, update, complete, delete
-- `src/actions/post.actions.ts`: create, update, mark ready, mark posted, delete
-- `src/actions/canvas.actions.ts`: create, update title, delete
-- `src/actions/weekly-review.actions.ts`: create, update, delete
+---
+
+## Deployment (Vercel + Neon)
+
+1. Create a project on [neon.tech](https://neon.tech) and copy the **pooled** connection string
+2. Import the repo on [vercel.com](https://vercel.com)
+3. Add `DATABASE_URL` in Vercel → Settings → Environment Variables
+4. Deploy — migrations run automatically via the build command
+5. Seed production once:
+   ```bash
+   DATABASE_URL="<neon-connection-string>" npm run db:seed
+   ```
+
+---
 
 ## Rendering Strategies
 
-- SSG: `/`
-- SSR/dynamic: `/dashboard`, `/board`, `/post-lab`, `/canvas`
-- ISR: `/showcase` (60-second revalidation)
-
-## API Routes vs Server Actions
-
-Route Handlers provide REST-style CRUD for programmatic access, API testing,
-future drag-and-drop updates, and canvas autosave.
-
-Server Actions handle internal form submissions in the Next.js application.
-They return plain objects and trigger route revalidation after mutations.
-
-## Assignment Concepts Covered
-
-- File-based routing
-- Layouts
-- Multiple pages and routes
-- SSR
-- SSG
-- ISR
-- API Route Handlers
-- GET, POST, PATCH, and DELETE
-- Prisma database integration
-- Structured API responses
-- Validation and error handling
-- Server Actions
-- `"use server"` directive
-
-## Assumptions / Limitations
-
-- Single-user app
-- No authentication in V1
-- Canvas data is stored as JSON
-- PostgreSQL is required
-- Frontend polish will be added later
+| Route | Strategy |
+|-------|----------|
+| `/` | SSG |
+| `/dashboard`, `/board`, `/post-lab`, `/canvas` | SSR |
+| `/showcase` | ISR (60s revalidation) |
