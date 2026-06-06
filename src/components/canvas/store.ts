@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_FILL,
   DEFAULT_FILL_PATTERN,
+  DEFAULT_PEN_SIZE,
   DEFAULT_STROKE,
   DEFAULT_STROKE_WIDTH,
   HISTORY_LIMIT,
@@ -28,6 +29,10 @@ function nextId(): string {
   return `s_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
 }
 
+function nextGroupId(): string {
+  return `g_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 type Action =
   | { type: "load"; scene: Scene }
   | { type: "add"; shape: Shape }
@@ -38,7 +43,11 @@ type Action =
   | { type: "undo" }
   | { type: "redo" }
   | { type: "begin_coalesce" }
-  | { type: "end_coalesce" };
+  | { type: "end_coalesce" }
+  | { type: "reorder"; id: string; direction: "front" | "back" | "forward" | "backward" }
+  | { type: "group"; ids: ReadonlyArray<string> }
+  | { type: "ungroup"; groupId: string }
+  | { type: "duplicate"; ids: ReadonlyArray<string>; offset: number };
 
 type State = {
   past: ReadonlyArray<Scene>;
@@ -64,6 +73,23 @@ function snapshot(state: State, scene: Scene, coalesce: boolean): State {
     present: freeze(scene),
     future: [],
     coalesce: false,
+  };
+}
+
+function bumpZ(scene: Scene, id: string, by: number): Scene {
+  const idx = scene.shapes.findIndex((s) => s.id === id);
+  if (idx === -1) return scene;
+  const shape = scene.shapes[idx]!;
+  const next = [...scene.shapes];
+  next.splice(idx, 1);
+  const newZ = by === Infinity
+    ? Math.max(...scene.shapes.map((s) => s.z), 0) + 1
+    : by === -Infinity
+      ? Math.min(...scene.shapes.map((s) => s.z), 0) - 1
+      : by;
+  return {
+    ...scene,
+    shapes: [...next, { ...shape, z: newZ }],
   };
 }
 
@@ -113,6 +139,8 @@ const reducer: Reducer<State, Action> = (state, action) => {
               points: s.points.map(
                 ([px, py]) => [px + action.dx, py + action.dy] as const,
               ),
+              x: s.x + action.dx,
+              y: s.y + action.dy,
             } as Shape;
           }
           return {
@@ -157,10 +185,99 @@ const reducer: Reducer<State, Action> = (state, action) => {
       return { ...state, coalesce: true };
     case "end_coalesce":
       return { ...state, coalesce: false };
+    case "reorder": {
+      const id = action.id;
+      let next: Scene;
+      switch (action.direction) {
+        case "front":
+          next = bumpZ(state.present, id, Infinity);
+          break;
+        case "back":
+          next = bumpZ(state.present, id, -Infinity);
+          break;
+        case "forward":
+        case "backward": {
+          const sorted = [...state.present.shapes].sort((a, b) => a.z - b.z);
+          const idx = sorted.findIndex((s) => s.id === id);
+          if (idx === -1) return state;
+          const target = action.direction === "forward" ? idx + 1 : idx - 1;
+          if (target < 0 || target >= sorted.length) return state;
+          const a = sorted[idx]!;
+          const b = sorted[target]!;
+          next = {
+            ...state.present,
+            shapes: state.present.shapes.map((s) => {
+              if (s.id === a.id) return { ...s, z: b.z + (action.direction === "forward" ? 1 : -1) } as Shape;
+              if (s.id === b.id) return { ...s, z: a.z + (action.direction === "forward" ? -1 : 1) } as Shape;
+              return s;
+            }),
+          };
+          break;
+        }
+      }
+      return snapshot(state, next, false);
+    }
+    case "group": {
+      const groupId = nextGroupId();
+      const ids = new Set(action.ids);
+      const next: Scene = {
+        ...state.present,
+        shapes: state.present.shapes.map((s) =>
+          ids.has(s.id) ? ({ ...s, groupId } as Shape) : s,
+        ),
+      };
+      return snapshot(state, next, false);
+    }
+    case "ungroup": {
+      const next: Scene = {
+        ...state.present,
+        shapes: state.present.shapes.map((s) =>
+          s.groupId === action.groupId ? ({ ...s, groupId: null } as Shape) : s,
+        ),
+      };
+      return snapshot(state, next, false);
+    }
+    case "duplicate": {
+      const ids = new Set(action.ids);
+      const copies: Shape[] = [];
+      for (const s of state.present.shapes) {
+        if (!ids.has(s.id)) continue;
+        const copyId = nextId();
+        const copyZ = nextZ();
+        if (s.type === "pen" || s.type === "arrow") {
+          copies.push({
+            ...s,
+            id: copyId,
+            z: copyZ,
+            x: s.x + action.offset,
+            y: s.y + action.offset,
+            points: s.points.map(
+              ([px, py]) => [px, py] as const,
+            ) as never,
+          } as Shape);
+        } else {
+          copies.push({
+            ...s,
+            id: copyId,
+            z: copyZ,
+            x: s.x + action.offset,
+            y: s.y + action.offset,
+            groupId: null,
+          } as Shape);
+        }
+      }
+      const next: Scene = {
+        ...state.present,
+        shapes: [...state.present.shapes, ...copies],
+      };
+      return snapshot(state, next, false);
+    }
   }
 };
 
 export type SceneDispatch = Dispatch<Action>;
+
+export type SceneApi = ReturnType<typeof useScene>;
 
 export function useScene(initial: Scene) {
   const [state, dispatch] = useReducer(reducer, undefined, () => ({
@@ -187,6 +304,11 @@ export function useScene(initial: Scene) {
     (ids: ReadonlyArray<string>) => dispatch({ type: "remove", ids }),
     [],
   );
+  const translateShapes = useCallback(
+    (ids: ReadonlyArray<string>, dx: number, dy: number) =>
+      dispatch({ type: "translate", ids, dx, dy }),
+    [],
+  );
   const setCamera = useCallback(
     (patch: Partial<Camera>) => dispatch({ type: "camera", camera: patch }),
     [],
@@ -198,6 +320,35 @@ export function useScene(initial: Scene) {
     [],
   );
   const endCoalesce = useCallback(() => dispatch({ type: "end_coalesce" }), []);
+  const bringToFront = useCallback(
+    (id: string) => dispatch({ type: "reorder", id, direction: "front" }),
+    [],
+  );
+  const sendToBack = useCallback(
+    (id: string) => dispatch({ type: "reorder", id, direction: "back" }),
+    [],
+  );
+  const bringForward = useCallback(
+    (id: string) => dispatch({ type: "reorder", id, direction: "forward" }),
+    [],
+  );
+  const sendBackward = useCallback(
+    (id: string) => dispatch({ type: "reorder", id, direction: "backward" }),
+    [],
+  );
+  const groupShapes = useCallback(
+    (ids: ReadonlyArray<string>) => dispatch({ type: "group", ids }),
+    [],
+  );
+  const ungroupShapes = useCallback(
+    (groupId: string) => dispatch({ type: "ungroup", groupId }),
+    [],
+  );
+  const duplicateShapes = useCallback(
+    (ids: ReadonlyArray<string>, offset = 8) =>
+      dispatch({ type: "duplicate", ids, offset }),
+    [],
+  );
 
   return {
     scene: state.present,
@@ -207,11 +358,19 @@ export function useScene(initial: Scene) {
     addShape,
     updateShape,
     removeShapes,
+    translateShapes,
     setCamera,
     undo,
     redo,
     beginCoalesce,
     endCoalesce,
+    bringToFront,
+    sendToBack,
+    bringForward,
+    sendBackward,
+    groupShapes,
+    ungroupShapes,
+    duplicateShapes,
   };
 }
 
@@ -224,4 +383,9 @@ export function makeDefaultShapeProps() {
   };
 }
 
-export { nextId };
+export const PEN_DEFAULTS = {
+  size: DEFAULT_PEN_SIZE,
+  stroke: DEFAULT_STROKE,
+};
+
+export { nextId, nextZ };

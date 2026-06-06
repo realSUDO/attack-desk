@@ -20,14 +20,12 @@ import {
 import { CanvasInspector } from "./CanvasInspector";
 import { CanvasSurface } from "./CanvasSurface";
 import { CanvasToolbar } from "./CanvasToolbar";
+import { ContextMenu } from "./ContextMenu";
 import { LinkMissionModal } from "./LinkMissionModal";
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import {
-  DEFAULT_FONT_SIZE,
-  DEFAULT_STROKE_WIDTH,
   type Scene,
   type Shape,
-  type TextShape,
   type Tool,
 } from "./types";
 import { useScene } from "./store";
@@ -54,6 +52,7 @@ type Props = {
 
 const TOOL_KEYBINDS: Record<string, Tool> = {
   v: "select",
+  h: "pan",
   p: "pen",
   d: "pen",
   r: "rect",
@@ -72,48 +71,55 @@ export function CanvasPage({
   availableMissions,
 }: Props) {
   const router = useRouter();
-  const scene = useScene(initialScene);
+  const sceneApi = useScene(initialScene);
   const [title, setTitle] = useState(initialTitle);
   const [tool, setTool] = useState<Tool>("select");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<ReadonlyArray<string>>([]);
   const [isSaving, startSave] = useTransition();
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [lastSavedScene, setLastSavedScene] = useState<Scene>(initialScene);
   const [lastSavedTitle, setLastSavedTitle] = useState<string>(initialTitle);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
-  const [editingTextValue, setEditingTextValue] = useState("");
-  const [editingTextPos, setEditingTextPos] = useState<{ x: number; y: number } | null>(null);
-  const [textEditKey, setTextEditKey] = useState(0);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [isDeleting, startDelete] = useTransition();
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [snapToShapes, setSnapToShapes] = useState(true);
+  const [contextMenu, setContextMenu] = useState<
+    | {
+        sx: number;
+        sy: number;
+        wx: number;
+        wy: number;
+        ids: ReadonlyArray<string>;
+      }
+    | null
+  >(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const textInputRef = useRef<HTMLTextAreaElement>(null);
 
-  const selectedShape = useMemo<Shape | null>(
-    () => scene.scene.shapes.find((s) => s.id === selectedId) ?? null,
-    [scene.scene.shapes, selectedId],
-  );
+  const selectedShapes = useMemo<ReadonlyArray<Shape>>(() => {
+    const set = new Set(selectedIds);
+    return sceneApi.scene.shapes.filter((s) => set.has(s.id));
+  }, [sceneApi.scene.shapes, selectedIds]);
 
   const isDirty = useMemo<boolean>(
-    () => scene.scene !== lastSavedScene || title !== lastSavedTitle,
-    [scene.scene, title, lastSavedScene, lastSavedTitle],
+    () => sceneApi.scene !== lastSavedScene || title !== lastSavedTitle,
+    [sceneApi.scene, title, lastSavedScene, lastSavedTitle],
   );
 
   const handleSave = useCallback(() => {
     startSave(async () => {
       const formData = new FormData();
       formData.set("title", title);
-      formData.set("data", JSON.stringify(scene.scene));
+      formData.set("data", JSON.stringify(sceneApi.scene));
       const result = await saveCanvasAction(canvasId, formData);
       if (result.success) {
-        setLastSavedScene(scene.scene);
+        setLastSavedScene(sceneApi.scene);
         setLastSavedTitle(title);
         setLastSavedAt(new Date());
       }
     });
-  }, [canvasId, scene.scene, title]);
+  }, [canvasId, sceneApi.scene, title]);
 
-  // Auto-save 1.5s after last change
   useEffect(() => {
     if (!isDirty) return;
     const t = setTimeout(() => {
@@ -122,16 +128,52 @@ export function CanvasPage({
     return () => clearTimeout(t);
   }, [isDirty, handleSave]);
 
-  // Keyboard shortcuts
+  const handleRequestTextEdit = useCallback((id: string) => {
+    if (id === "") {
+      setEditingTextId(null);
+      return;
+    }
+    setEditingTextId(id);
+  }, []);
+
+  // Commit/cancel text edit based on whether it has content.
+  useEffect(() => {
+    if (editingTextId === null) return;
+    // We need to know whether the text shape's text is empty to decide
+    // to delete or keep.
+  }, [editingTextId]);
+
+  // When a text edit finishes, validate and clean up.
+  const finalizeTextEdit = useCallback(() => {
+    if (!editingTextId) return;
+    const shape = sceneApi.scene.shapes.find((s) => s.id === editingTextId);
+    if (shape && shape.type === "text") {
+      const trimmed = shape.text.trim();
+      if (trimmed === "") {
+        sceneApi.removeShapes([editingTextId]);
+      } else if (shape.text !== trimmed) {
+        sceneApi.updateShape(editingTextId, { text: trimmed });
+      }
+    }
+    setEditingTextId(null);
+  }, [editingTextId, sceneApi]);
+
+  useEffect(() => {
+    if (editingTextId === null) return;
+    // Listen for blur on any text editor — but since we use a ref-based
+    // editor, we can't easily listen for blur. Instead, the editor itself
+    // calls onCommit, which we forward to setEditingTextId(null).
+  }, [editingTextId]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (
+      const inTextEditor =
         target &&
         (target.tagName === "INPUT" ||
           target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
+          target.isContentEditable);
+      if (inTextEditor) {
         if (e.key === "Escape") {
           (target as HTMLElement).blur();
         }
@@ -146,17 +188,17 @@ export function CanvasPage({
       }
 
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedId) {
+        if (selectedIds.length > 0) {
           e.preventDefault();
-          scene.removeShapes([selectedId]);
-          setSelectedId(null);
+          sceneApi.removeShapes(selectedIds);
+          setSelectedIds([]);
         }
         return;
       }
 
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && k === "z") {
         e.preventDefault();
-        scene.undo();
+        sceneApi.undo();
         return;
       }
 
@@ -165,7 +207,7 @@ export function CanvasPage({
         ((e.metaKey || e.ctrlKey) && k === "y")
       ) {
         e.preventDefault();
-        scene.redo();
+        sceneApi.redo();
         return;
       }
 
@@ -175,73 +217,73 @@ export function CanvasPage({
         return;
       }
 
-      if (e.key === "Escape") {
-        setSelectedId(null);
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && k === "a") {
+        e.preventDefault();
+        setSelectedIds(sceneApi.scene.shapes.map((s) => s.id));
         return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && k === "d" && selectedIds.length > 0) {
+        e.preventDefault();
+        sceneApi.duplicateShapes(selectedIds, 8);
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && k === "g" && selectedIds.length > 0) {
+        e.preventDefault();
+        const first = sceneApi.scene.shapes.find((s) => s.id === selectedIds[0]);
+        if (first?.groupId) {
+          sceneApi.ungroupShapes(first.groupId);
+        }
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && k === "g" && selectedIds.length > 0) {
+        e.preventDefault();
+        sceneApi.groupShapes(selectedIds);
+        return;
+      }
+
+      if (e.key === "Escape") {
+        setSelectedIds([]);
+        setContextMenu(null);
+        return;
+      }
+
+      // Keyboard nudge.
+      if (selectedIds.length > 0 && tool === "select") {
+        const step = e.shiftKey ? 10 : 1;
+        let dx = 0;
+        let dy = 0;
+        if (e.key === "ArrowLeft") dx = -step;
+        else if (e.key === "ArrowRight") dx = step;
+        else if (e.key === "ArrowUp") dy = -step;
+        else if (e.key === "ArrowDown") dy = step;
+        if (dx !== 0 || dy !== 0) {
+          e.preventDefault();
+          sceneApi.translateShapes(selectedIds, dx, dy);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleSave, scene, selectedId]);
-
-  const handleTextRequest = useCallback(
-    (x: number, y: number) => {
-      const id = scene.addShape({
-        type: "text",
-        x,
-        y,
-        stroke: "#1e1b15",
-        fill: "transparent",
-        fillPattern: "none",
-        strokeWidth: DEFAULT_STROKE_WIDTH,
-        text: "",
-        fontSize: DEFAULT_FONT_SIZE,
-      } as Omit<TextShape, "id" | "z">);
-      if (typeof id === "string") {
-        setSelectedId(id);
-        setEditingTextId(id);
-        setEditingTextValue("");
-        setEditingTextPos({ x, y });
-        setTextEditKey((k) => k + 1);
-      }
-    },
-    [scene],
-  );
-
-  useEffect(() => {
-    if (editingTextId && textInputRef.current) {
-      textInputRef.current.focus();
-    }
-  }, [editingTextId, textEditKey]);
-
-  const handleTextCommit = useCallback(() => {
-    if (editingTextId) {
-      const trimmed = editingTextValue.trim();
-      if (trimmed === "") {
-        scene.removeShapes([editingTextId]);
-      } else {
-        scene.updateShape(editingTextId, { text: trimmed });
-      }
-      setEditingTextId(null);
-      setEditingTextValue("");
-      setEditingTextPos(null);
-    }
-  }, [editingTextId, editingTextValue, scene]);
+  }, [handleSave, sceneApi, selectedIds, tool]);
 
   const handleUpdateSelected = useCallback(
     (patch: Partial<Shape>) => {
-      if (!selectedId) return;
-      scene.updateShape(selectedId, patch);
+      for (const id of selectedIds) {
+        sceneApi.updateShape(id, patch);
+      }
     },
-    [scene, selectedId],
+    [sceneApi, selectedIds],
   );
 
   const handleDeleteSelected = useCallback(() => {
-    if (selectedId) {
-      scene.removeShapes([selectedId]);
-      setSelectedId(null);
+    if (selectedIds.length > 0) {
+      sceneApi.removeShapes(selectedIds);
+      setSelectedIds([]);
     }
-  }, [scene, selectedId]);
+  }, [sceneApi, selectedIds]);
 
   const handleDeleteCanvas = useCallback(() => {
     if (typeof window !== "undefined") {
@@ -265,6 +307,22 @@ export function CanvasPage({
     [canvasId],
   );
 
+  const handleShowContextMenu = useCallback(
+    (point: { sx: number; sy: number; wx: number; wy: number }, ids: ReadonlyArray<string>) => {
+      if (ids.length === 0) return;
+      setSelectedIds(ids);
+      setContextMenu({ ...point, ids });
+    },
+    [],
+  );
+
+  // Finalize text edit when editingTextId changes to null.
+  useEffect(() => {
+    if (editingTextId === null) {
+      // No-op; finalize is called from the editor's onBlur.
+    }
+  }, [editingTextId]);
+
   return (
     <div className="bg-background flex h-screen overflow-hidden">
       <Sidebar />
@@ -272,10 +330,10 @@ export function CanvasPage({
         <CanvasToolbar
           tool={tool}
           onTool={setTool}
-          canUndo={scene.canUndo}
-          canRedo={scene.canRedo}
-          onUndo={scene.undo}
-          onRedo={scene.redo}
+          canUndo={sceneApi.canUndo}
+          canRedo={sceneApi.canRedo}
+          onUndo={sceneApi.undo}
+          onRedo={sceneApi.redo}
           isSaving={isSaving}
           isDirty={isDirty}
           onSave={handleSave}
@@ -284,58 +342,29 @@ export function CanvasPage({
         <div className="flex flex-1 overflow-hidden">
           <div className="relative flex-1">
             <CanvasSurface
-              shapes={scene.scene.shapes}
-              camera={scene.scene.camera}
-              selectedId={selectedId}
+              shapes={sceneApi.scene.shapes}
+              camera={sceneApi.scene.camera}
               tool={tool}
-              onCamera={scene.setCamera}
-              onCommitShape={scene.addShape}
-              onUpdateShape={scene.updateShape}
-              onSelect={setSelectedId}
-              onErase={(id) => scene.removeShapes([id])}
-              onBeginCoalesce={scene.beginCoalesce}
-              onEndCoalesce={scene.endCoalesce}
-              onTextRequest={handleTextRequest}
+              selectedIds={selectedIds}
+              editingTextId={editingTextId}
+              snapToGrid={snapToGrid}
+              snapToShapes={snapToShapes}
+              onCamera={sceneApi.setCamera}
+              onCommitShape={sceneApi.addShape}
+              onUpdateShape={sceneApi.updateShape}
+              onRemoveShapes={sceneApi.removeShapes}
+              onTranslate={sceneApi.translateShapes}
+              onSelectionChange={setSelectedIds}
+              onRequestTextEdit={(id) => {
+                if (id === "") {
+                  finalizeTextEdit();
+                } else {
+                  handleRequestTextEdit(id);
+                }
+              }}
+              onShowContextMenu={handleShowContextMenu}
               surfaceRef={surfaceRef}
             />
-
-            {editingTextId && editingTextPos && (
-              <textarea
-                key={textEditKey}
-                ref={textInputRef}
-                value={editingTextValue}
-                onChange={(e) => {
-                  setEditingTextValue(e.target.value);
-                  if (editingTextId) {
-                    scene.updateShape(editingTextId, { text: e.target.value });
-                  }
-                }}
-                onBlur={handleTextCommit}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    handleTextCommit();
-                  } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    handleTextCommit();
-                  }
-                }}
-                placeholder="Type something…"
-                className="font-headline-md text-headline-md border-primary absolute z-50 resize-none border-2 bg-background p-0 focus:outline-hidden"
-                style={{
-                  left:
-                    editingTextPos.x * scene.scene.camera.zoom +
-                    scene.scene.camera.x,
-                  top:
-                    editingTextPos.y * scene.scene.camera.zoom +
-                    scene.scene.camera.y,
-                  fontSize: `${DEFAULT_FONT_SIZE * scene.scene.camera.zoom}px`,
-                  lineHeight: 1.2,
-                  minWidth: "120px",
-                  color: "#1e1b15",
-                }}
-              />
-            )}
 
             <div className="absolute bottom-lg left-lg z-40">
               <div className="border-outline-variant bg-surface-container-lowest flex items-center gap-sm border px-md py-sm">
@@ -356,15 +385,22 @@ export function CanvasPage({
             </div>
 
             <ZoomControls
-              zoom={scene.scene.camera.zoom}
-              onZoom={(z) => scene.setCamera({ zoom: z })}
+              zoom={sceneApi.scene.camera.zoom}
+              onZoom={(z) => sceneApi.setCamera({ zoom: z })}
+            />
+
+            <SnapTogglePills
+              snapToGrid={snapToGrid}
+              snapToShapes={snapToShapes}
+              onToggleGrid={() => setSnapToGrid((v) => !v)}
+              onToggleShapes={() => setSnapToShapes((v) => !v)}
             />
           </div>
 
           <CanvasInspector
             canvasTitle={title}
             onTitleChange={setTitle}
-            selected={selectedShape}
+            selection={selectedShapes}
             onUpdateSelected={handleUpdateSelected}
             onDeleteSelected={handleDeleteSelected}
             linkedMissions={linked.missions}
@@ -374,6 +410,16 @@ export function CanvasPage({
             onDeleteCanvas={handleDeleteCanvas}
             onOpenLinkModal={() => setLinkModalOpen(true)}
             onUnlinkMission={handleUnlinkMission}
+            onBringToFront={(id) => sceneApi.bringToFront(id)}
+            onSendToBack={(id) => sceneApi.sendToBack(id)}
+            onBringForward={(id) => sceneApi.bringForward(id)}
+            onSendBackward={(id) => sceneApi.sendBackward(id)}
+            onGroup={() => sceneApi.groupShapes(selectedIds)}
+            onUngroup={() => {
+              const first = sceneApi.scene.shapes.find((s) => s.id === selectedIds[0]);
+              if (first?.groupId) sceneApi.ungroupShapes(first.groupId);
+            }}
+            onDuplicate={() => sceneApi.duplicateShapes(selectedIds, 8)}
           />
         </div>
       </main>
@@ -384,6 +430,32 @@ export function CanvasPage({
         onClose={() => setLinkModalOpen(false)}
         missions={availableMissions}
       />
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.sx}
+          y={contextMenu.sy}
+          ids={contextMenu.ids}
+          onClose={() => setContextMenu(null)}
+          onBringToFront={(id) => sceneApi.bringToFront(id)}
+          onSendToBack={(id) => sceneApi.sendToBack(id)}
+          onBringForward={(id) => sceneApi.bringForward(id)}
+          onSendBackward={(id) => sceneApi.sendBackward(id)}
+          onGroup={() => sceneApi.groupShapes(selectedIds)}
+          onUngroup={() => {
+            const first = sceneApi.scene.shapes.find((s) => s.id === selectedIds[0]);
+            if (first?.groupId) sceneApi.ungroupShapes(first.groupId);
+          }}
+          onDuplicate={() => sceneApi.duplicateShapes(selectedIds, 8)}
+          onDelete={() => {
+            sceneApi.removeShapes(selectedIds);
+            setSelectedIds([]);
+          }}
+          isGrouped={
+            !!sceneApi.scene.shapes.find((s) => s.id === selectedIds[0])?.groupId
+          }
+        />
+      )}
     </div>
   );
 }
@@ -415,6 +487,45 @@ function ZoomControls({
         aria-label="Zoom in"
       >
         <MaterialIcon name="add" size={18} />
+      </button>
+    </div>
+  );
+}
+
+function SnapTogglePills({
+  snapToGrid,
+  snapToShapes,
+  onToggleGrid,
+  onToggleShapes,
+}: {
+  snapToGrid: boolean;
+  snapToShapes: boolean;
+  onToggleGrid: () => void;
+  onToggleShapes: () => void;
+}) {
+  return (
+    <div className="absolute right-lg bottom-lg z-40 flex gap-sm">
+      <button
+        type="button"
+        onClick={onToggleGrid}
+        title="Toggle snap to grid (8px)"
+        className={`border-outline-variant bg-surface flex h-9 items-center gap-xs border px-sm font-label-sm uppercase ${
+          snapToGrid ? "text-primary" : "text-on-surface-variant"
+        }`}
+      >
+        <MaterialIcon name="grid_4x4" size={16} />
+        Grid
+      </button>
+      <button
+        type="button"
+        onClick={onToggleShapes}
+        title="Toggle snap to other shapes"
+        className={`border-outline-variant bg-surface flex h-9 items-center gap-xs border px-sm font-label-sm uppercase ${
+          snapToShapes ? "text-primary" : "text-on-surface-variant"
+        }`}
+      >
+        <MaterialIcon name="align_horizontal_left" size={16} />
+        Align
       </button>
     </div>
   );

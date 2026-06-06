@@ -15,7 +15,7 @@ import {
 type Props = {
   canvasTitle: string;
   onTitleChange: (v: string) => void;
-  selected: Shape | null;
+  selection: ReadonlyArray<Shape>;
   onUpdateSelected: (patch: Partial<Shape>) => void;
   onDeleteSelected: () => void;
   linkedMissions: ReadonlyArray<{ id: string; title: string }>;
@@ -25,6 +25,13 @@ type Props = {
   onDeleteCanvas: () => void;
   onOpenLinkModal: () => void;
   onUnlinkMission: (missionId: string) => void;
+  onBringToFront: (id: string) => void;
+  onSendToBack: (id: string) => void;
+  onBringForward: (id: string) => void;
+  onSendBackward: (id: string) => void;
+  onGroup: () => void;
+  onUngroup: () => void;
+  onDuplicate: () => void;
 };
 
 const FILL_PATTERN_LABELS: Record<FillPattern, string> = {
@@ -46,7 +53,7 @@ const FILL_PATTERN_ICONS: Record<FillPattern, string> = {
 export function CanvasInspector({
   canvasTitle,
   onTitleChange,
-  selected,
+  selection,
   onUpdateSelected,
   onDeleteSelected,
   linkedMissions,
@@ -56,7 +63,26 @@ export function CanvasInspector({
   onDeleteCanvas,
   onOpenLinkModal,
   onUnlinkMission,
+  onBringToFront,
+  onSendToBack,
+  onBringForward,
+  onSendBackward,
+  onGroup,
+  onUngroup,
+  onDuplicate,
 }: Props) {
+  const single = selection.length === 1 ? selection[0]! : null;
+  const multi = selection.length > 1;
+  const any = selection.length > 0;
+  const allSameStroke = selection.every((s) => s.stroke === selection[0]?.stroke);
+  const allSameFill = selection.every((s) => s.fill === selection[0]?.fill);
+  const allSameFillPattern = selection.every(
+    (s) => s.fillPattern === selection[0]?.fillPattern,
+  );
+  const allSameStrokeWidth = selection.every(
+    (s) => s.strokeWidth === selection[0]?.strokeWidth,
+  );
+
   return (
     <aside className="border-outline-variant bg-surface flex w-80 flex-col border-l z-30">
       <div className="border-outline-variant border-b">
@@ -80,26 +106,93 @@ export function CanvasInspector({
         />
       </div>
 
-      {selected && (
+      {any && (
         <div className="border-outline-variant p-lg border-b">
           <div className="mb-md flex items-center justify-between">
             <span className="font-label-sm text-on-surface-variant uppercase">
-              {selected.type}
+              {multi
+                ? `${selection.length} selected`
+                : (single?.type ?? "shape")}
             </span>
-            <button
-              type="button"
-              onClick={onDeleteSelected}
-              title="Delete shape (⌫)"
-              className="text-on-surface-variant hover:text-error transition-colors"
-            >
-              <MaterialIcon name="delete" size={18} />
-            </button>
+            <div className="flex items-center gap-xs">
+              <button
+                type="button"
+                onClick={onDuplicate}
+                title="Duplicate (⌘D)"
+                className="text-on-surface-variant hover:text-primary transition-colors"
+              >
+                <MaterialIcon name="content_copy" size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={onDeleteSelected}
+                title="Delete shapes (⌫)"
+                className="text-on-surface-variant hover:text-error transition-colors"
+              >
+                <MaterialIcon name="delete" size={18} />
+              </button>
+            </div>
           </div>
 
-          {(selected.type === "rect" ||
-            selected.type === "ellipse" ||
-            selected.type === "pen" ||
-            selected.type === "arrow") && (
+          {/* Order / Group operations */}
+          {single && (
+            <div className="mb-md">
+              <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
+                Order
+              </span>
+              <div className="grid grid-cols-4 gap-sm">
+                <OrderButton
+                  icon="flip_to_front"
+                  label="Front"
+                  onClick={() => onBringToFront(single.id)}
+                />
+                <OrderButton
+                  icon="arrow_upward"
+                  label="Forward"
+                  onClick={() => onBringForward(single.id)}
+                />
+                <OrderButton
+                  icon="arrow_downward"
+                  label="Backward"
+                  onClick={() => onSendBackward(single.id)}
+                />
+                <OrderButton
+                  icon="flip_to_back"
+                  label="Back"
+                  onClick={() => onSendToBack(single.id)}
+                />
+              </div>
+            </div>
+          )}
+
+          {selection.length >= 2 && (
+            <div className="mb-md flex gap-sm">
+              <button
+                type="button"
+                onClick={onGroup}
+                className="border-outline-variant hover:bg-surface-container-highest flex flex-1 items-center justify-center gap-xs border py-sm text-[11px] uppercase"
+              >
+                <MaterialIcon name="group_work" size={14} />
+                Group
+              </button>
+              <button
+                type="button"
+                onClick={onUngroup}
+                disabled={!single?.groupId}
+                className="border-outline-variant hover:bg-surface-container-highest flex flex-1 items-center justify-center gap-xs border py-sm text-[11px] uppercase disabled:opacity-30"
+              >
+                <MaterialIcon name="group_off" size={14} />
+                Ungroup
+              </button>
+            </div>
+          )}
+
+          {/* Stroke */}
+          {(single?.type === "rect" ||
+            single?.type === "ellipse" ||
+            single?.type === "pen" ||
+            single?.type === "arrow" ||
+            multi) && (
             <div className="mb-md">
               <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
                 Stroke
@@ -112,7 +205,7 @@ export function CanvasInspector({
                     onClick={() => onUpdateSelected({ stroke: color })}
                     aria-label={`Stroke ${color}`}
                     className={`h-7 w-7 border ${
-                      selected.stroke === color
+                      allSameStroke && single?.stroke === color
                         ? "border-primary outline outline-2 outline-primary"
                         : "border-outline"
                     }`}
@@ -123,7 +216,8 @@ export function CanvasInspector({
             </div>
           )}
 
-          {(selected.type === "rect" || selected.type === "ellipse") && (
+          {/* Fill */}
+          {(single?.type === "rect" || single?.type === "ellipse" || multi) && (
             <>
               <div className="mb-md">
                 <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
@@ -137,7 +231,7 @@ export function CanvasInspector({
                       onClick={() => onUpdateSelected({ fill: color })}
                       aria-label={`Fill ${color}`}
                       className={`h-7 w-7 border ${
-                        selected.fill === color
+                        allSameFill && single?.fill === color
                           ? "border-primary outline outline-2 outline-primary"
                           : "border-outline"
                       }`}
@@ -160,7 +254,7 @@ export function CanvasInspector({
                 </span>
                 <div className="grid grid-cols-5 gap-sm">
                   {FILL_PATTERNS.map((p) => {
-                    const active = selected.fillPattern === p;
+                    const active = allSameFillPattern && single?.fillPattern === p;
                     return (
                       <button
                         key={p}
@@ -179,30 +273,16 @@ export function CanvasInspector({
                   })}
                 </div>
               </div>
-
-              <div>
-                <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
-                  Stroke Width
-                </span>
-                <input
-                  type="range"
-                  min={1}
-                  max={12}
-                  value={selected.strokeWidth}
-                  onChange={(e) =>
-                    onUpdateSelected({ strokeWidth: Number(e.target.value) })
-                  }
-                  className="w-full"
-                />
-                <span className="font-metadata text-metadata text-on-surface-variant block text-center">
-                  {selected.strokeWidth}px
-                </span>
-              </div>
             </>
           )}
 
-          {(selected.type === "pen" || selected.type === "arrow") && (
-            <div>
+          {/* Stroke width — applies to rect/ellipse/pen/arrow/multi */}
+          {(single?.type === "rect" ||
+            single?.type === "ellipse" ||
+            single?.type === "pen" ||
+            single?.type === "arrow" ||
+            multi) && (
+            <div className="mb-md">
               <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
                 Stroke Width
               </span>
@@ -210,26 +290,49 @@ export function CanvasInspector({
                 type="range"
                 min={1}
                 max={12}
-                value={selected.strokeWidth}
+                value={allSameStrokeWidth ? single?.strokeWidth ?? 2 : 2}
                 onChange={(e) =>
                   onUpdateSelected({ strokeWidth: Number(e.target.value) })
                 }
                 className="w-full"
               />
               <span className="font-metadata text-metadata text-on-surface-variant block text-center">
-                {selected.strokeWidth}px
+                {allSameStrokeWidth ? `${single?.strokeWidth}px` : "Mixed"}
               </span>
             </div>
           )}
 
-          {selected.type === "text" && (
+          {/* Pen size — pen only */}
+          {single?.type === "pen" && (
+            <div className="mb-md">
+              <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
+                Pen Size
+              </span>
+              <input
+                type="range"
+                min={1}
+                max={24}
+                value={single.size}
+                onChange={(e) =>
+                  onUpdateSelected({ size: Number(e.target.value) })
+                }
+                className="w-full"
+              />
+              <span className="font-metadata text-metadata text-on-surface-variant block text-center">
+                {single.size}px
+              </span>
+            </div>
+          )}
+
+          {/* Text-specific */}
+          {single?.type === "text" && (
             <>
               <div className="mb-md">
                 <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
                   Text
                 </span>
                 <textarea
-                  value={selected.text}
+                  value={single.text}
                   onChange={(e) => onUpdateSelected({ text: e.target.value })}
                   rows={3}
                   className="font-body-md border-outline focus:border-primary w-full border bg-transparent p-sm focus:outline-hidden"
@@ -243,14 +346,14 @@ export function CanvasInspector({
                   type="range"
                   min={12}
                   max={72}
-                  value={selected.fontSize}
+                  value={single.fontSize}
                   onChange={(e) =>
                     onUpdateSelected({ fontSize: Number(e.target.value) })
                   }
                   className="w-full"
                 />
                 <span className="font-metadata text-metadata text-on-surface-variant block text-center">
-                  {selected.fontSize}px
+                  {single.fontSize}px
                 </span>
               </div>
             </>
@@ -341,6 +444,27 @@ export function CanvasInspector({
         </button>
       </div>
     </aside>
+  );
+}
+
+function OrderButton({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="border-outline-variant hover:bg-surface-container-highest flex h-9 flex-col items-center justify-center border"
+      title={label}
+    >
+      <MaterialIcon name={icon} size={14} />
+    </button>
   );
 }
 
