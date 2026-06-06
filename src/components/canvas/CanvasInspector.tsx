@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 
@@ -20,6 +21,7 @@ type Props = {
   toolDefaults: ToolDefaults;
   onUpdateToolDefaults: (patch: Partial<ToolDefaults>) => void;
   onUpdateSelected: (patch: Partial<Shape>) => void;
+  onUpdateSelectedBatch: (patch: Partial<Shape>) => void;
   onDeleteSelected: () => void;
   linkedMissions: ReadonlyArray<{ id: string; title: string }>;
   linkedDeadlines: ReadonlyArray<{ id: string; title: string }>;
@@ -53,6 +55,8 @@ const FILL_PATTERN_ICONS: Record<FillPattern, string> = {
   dots: "blur_on",
 };
 
+type Tab = "defaults" | "selection";
+
 export function CanvasInspector({
   canvasTitle,
   onTitleChange,
@@ -60,6 +64,7 @@ export function CanvasInspector({
   toolDefaults,
   onUpdateToolDefaults,
   onUpdateSelected,
+  onUpdateSelectedBatch,
   onDeleteSelected,
   linkedMissions,
   linkedDeadlines,
@@ -79,6 +84,8 @@ export function CanvasInspector({
   const single = selection.length === 1 ? selection[0]! : null;
   const multi = selection.length > 1;
   const any = selection.length > 0;
+  const [tab, setTab] = useState<Tab>(any ? "selection" : "defaults");
+
   const allSameStroke = selection.every((s) => s.stroke === selection[0]?.stroke);
   const allSameFill = selection.every((s) => s.fill === selection[0]?.fill);
   const allSameFillPattern = selection.every(
@@ -111,166 +118,56 @@ export function CanvasInspector({
         />
       </div>
 
-      {!any && (
-        <ToolDefaultsPanel
-          toolDefaults={toolDefaults}
-          onUpdateToolDefaults={onUpdateToolDefaults}
+      <div className="border-outline-variant flex border-b">
+        <TabButton
+          label="Defaults"
+          active={tab === "defaults"}
+          onClick={() => setTab("defaults")}
         />
-      )}
+        <TabButton
+          label={any ? (multi ? `Selection (${selection.length})` : "Selection") : "Selection"}
+          active={tab === "selection"}
+          disabled={!any}
+          onClick={() => setTab("selection")}
+        />
+      </div>
 
-      {any && (
-        <div className="border-outline-variant p-lg border-b">
-          <div className="mb-md flex items-center justify-between">
-            <span className="font-label-sm text-on-surface-variant uppercase">
-              {multi ? `${selection.length} selected` : (single?.type ?? "shape")}
-            </span>
-            <div className="flex items-center gap-xs">
-              <button
-                type="button"
-                onClick={onDuplicate}
-                title="Duplicate (⌘D)"
-                className="text-on-surface-variant hover:text-primary transition-colors"
-              >
-                <MaterialIcon name="content_copy" size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={onDeleteSelected}
-                title="Delete shapes (⌫)"
-                className="text-on-surface-variant hover:text-error transition-colors"
-              >
-                <MaterialIcon name="delete" size={18} />
-              </button>
-            </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {tab === "defaults" && (
+          <ToolDefaultsPanel
+            toolDefaults={toolDefaults}
+            onUpdateToolDefaults={onUpdateToolDefaults}
+          />
+        )}
+
+        {tab === "selection" && any && (
+          <SelectionPanel
+            selection={selection}
+            single={single}
+            multi={multi}
+            allSameStroke={allSameStroke}
+            allSameFill={allSameFill}
+            allSameFillPattern={allSameFillPattern}
+            allSameStrokeWidth={allSameStrokeWidth}
+            onUpdateSelected={onUpdateSelected}
+            onUpdateSelectedBatch={onUpdateSelectedBatch}
+            onDeleteSelected={onDeleteSelected}
+            onDuplicate={onDuplicate}
+            onBringToFront={onBringToFront}
+            onSendToBack={onSendToBack}
+            onBringForward={onBringForward}
+            onSendBackward={onSendBackward}
+            onGroup={onGroup}
+            onUngroup={onUngroup}
+          />
+        )}
+
+        {tab === "selection" && !any && (
+          <div className="text-on-surface-variant font-body-md p-lg text-center">
+            Select a shape to edit its properties.
           </div>
-
-          {single && (
-            <div className="mb-md">
-              <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
-                Order
-              </span>
-              <div className="grid grid-cols-4 gap-sm">
-                <OrderButton
-                  icon="flip_to_front"
-                  label="Front"
-                  onClick={() => onBringToFront(single.id)}
-                />
-                <OrderButton
-                  icon="arrow_upward"
-                  label="Forward"
-                  onClick={() => onBringForward(single.id)}
-                />
-                <OrderButton
-                  icon="arrow_downward"
-                  label="Backward"
-                  onClick={() => onSendBackward(single.id)}
-                />
-                <OrderButton
-                  icon="flip_to_back"
-                  label="Back"
-                  onClick={() => onSendToBack(single.id)}
-                />
-              </div>
-            </div>
-          )}
-
-          {selection.length >= 2 && (
-            <div className="mb-md flex gap-sm">
-              <button
-                type="button"
-                onClick={onGroup}
-                className="border-outline-variant hover:bg-surface-container-highest flex flex-1 items-center justify-center gap-xs border py-sm text-[11px] uppercase"
-              >
-                <MaterialIcon name="group_work" size={14} />
-                Group
-              </button>
-              <button
-                type="button"
-                onClick={onUngroup}
-                disabled={!single?.groupId}
-                className="border-outline-variant hover:bg-surface-container-highest flex flex-1 items-center justify-center gap-xs border py-sm text-[11px] uppercase disabled:opacity-30"
-              >
-                <MaterialIcon name="group_off" size={14} />
-                Ungroup
-              </button>
-            </div>
-          )}
-
-          {any && (
-            <StrokePalette
-              value={
-                allSameStroke && single ? single.stroke : null
-              }
-              onChange={(c) => onUpdateSelected({ stroke: c })}
-            />
-          )}
-
-          {any &&
-            (single?.type === "rect" ||
-              single?.type === "ellipse" ||
-              multi) && (
-              <>
-                <FillPalette
-                  value={allSameFill && single ? single.fill : null}
-                  onChange={(c) => onUpdateSelected({ fill: c })}
-                />
-                <PatternGrid
-                  value={
-                    allSameFillPattern && single ? single.fillPattern : null
-                  }
-                  onChange={(p) => onUpdateSelected({ fillPattern: p })}
-                />
-              </>
-            )}
-
-          {any &&
-            (single?.type === "rect" ||
-              single?.type === "ellipse" ||
-              single?.type === "arrow" ||
-              multi) && (
-              <Slider
-                label="Stroke Width"
-                min={1}
-                max={12}
-                value={allSameStrokeWidth && single ? single.strokeWidth : null}
-                onChange={(v) => onUpdateSelected({ strokeWidth: v })}
-              />
-            )}
-
-          {single?.type === "pen" && (
-            <Slider
-              label="Pen Size"
-              min={1}
-              max={24}
-              value={single.size}
-              onChange={(v) => onUpdateSelected({ size: v })}
-            />
-          )}
-
-          {single?.type === "text" && (
-            <>
-              <div className="mb-md">
-                <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
-                  Text
-                </span>
-                <textarea
-                  value={single.text}
-                  onChange={(e) => onUpdateSelected({ text: e.target.value })}
-                  rows={3}
-                  className="font-body-md border-outline focus:border-primary w-full border bg-transparent p-sm focus:outline-hidden"
-                />
-              </div>
-              <Slider
-                label="Size"
-                min={12}
-                max={72}
-                value={single.fontSize}
-                onChange={(v) => onUpdateSelected({ fontSize: v })}
-              />
-            </>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="border-outline-variant p-lg border-b">
         <span className="font-label-sm text-on-surface-variant mb-md block uppercase">
@@ -350,6 +247,220 @@ export function CanvasInspector({
         </button>
       </div>
     </aside>
+  );
+}
+
+function TabButton({
+  label,
+  active,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`font-label-sm flex-1 border-b-2 px-md py-sm uppercase transition-colors ${
+        active
+          ? "border-primary text-primary"
+          : "border-transparent text-on-surface-variant hover:text-primary"
+      } disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-on-surface-variant`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function SelectionPanel({
+  selection,
+  single,
+  multi,
+  allSameStroke,
+  allSameFill,
+  allSameFillPattern,
+  allSameStrokeWidth,
+  onUpdateSelected,
+  onUpdateSelectedBatch,
+  onDeleteSelected,
+  onDuplicate,
+  onBringToFront,
+  onSendToBack,
+  onBringForward,
+  onSendBackward,
+  onGroup,
+  onUngroup,
+}: {
+  selection: ReadonlyArray<Shape>;
+  single: Shape | null;
+  multi: boolean;
+  allSameStroke: boolean;
+  allSameFill: boolean;
+  allSameFillPattern: boolean;
+  allSameStrokeWidth: boolean;
+  onUpdateSelected: (patch: Partial<Shape>) => void;
+  onUpdateSelectedBatch: (patch: Partial<Shape>) => void;
+  onDeleteSelected: () => void;
+  onDuplicate: () => void;
+  onBringToFront: (id: string) => void;
+  onSendToBack: (id: string) => void;
+  onBringForward: (id: string) => void;
+  onSendBackward: (id: string) => void;
+  onGroup: () => void;
+  onUngroup: () => void;
+}) {
+  const batch = multi;
+  const onChange = batch ? onUpdateSelectedBatch : onUpdateSelected;
+
+  return (
+    <div className="border-outline-variant p-lg border-b">
+      <div className="mb-md flex items-center justify-between">
+        <span className="font-label-sm text-on-surface-variant uppercase">
+          {multi ? `${selection.length} selected` : (single?.type ?? "shape")}
+        </span>
+        <div className="flex items-center gap-xs">
+          <button
+            type="button"
+            onClick={onDuplicate}
+            title="Duplicate (⌘D)"
+            className="text-on-surface-variant hover:text-primary transition-colors"
+          >
+            <MaterialIcon name="content_copy" size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={onDeleteSelected}
+            title="Delete shapes (⌫)"
+            className="text-on-surface-variant hover:text-error transition-colors"
+          >
+            <MaterialIcon name="delete" size={18} />
+          </button>
+        </div>
+      </div>
+
+      {single && (
+        <div className="mb-md">
+          <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
+            Order
+          </span>
+          <div className="grid grid-cols-4 gap-sm">
+            <OrderButton
+              icon="flip_to_front"
+              label="Front"
+              onClick={() => onBringToFront(single.id)}
+            />
+            <OrderButton
+              icon="arrow_upward"
+              label="Forward"
+              onClick={() => onBringForward(single.id)}
+            />
+            <OrderButton
+              icon="arrow_downward"
+              label="Backward"
+              onClick={() => onSendBackward(single.id)}
+            />
+            <OrderButton
+              icon="flip_to_back"
+              label="Back"
+              onClick={() => onSendToBack(single.id)}
+            />
+          </div>
+        </div>
+      )}
+
+      {selection.length >= 2 && (
+        <div className="mb-md flex gap-sm">
+          <button
+            type="button"
+            onClick={onGroup}
+            className="border-outline-variant hover:bg-surface-container-highest flex flex-1 items-center justify-center gap-xs border py-sm text-[11px] uppercase"
+          >
+            <MaterialIcon name="group_work" size={14} />
+            Group
+          </button>
+          <button
+            type="button"
+            onClick={onUngroup}
+            disabled={!single?.groupId}
+            className="border-outline-variant hover:bg-surface-container-highest flex flex-1 items-center justify-center gap-xs border py-sm text-[11px] uppercase disabled:opacity-30"
+          >
+            <MaterialIcon name="group_off" size={14} />
+            Ungroup
+          </button>
+        </div>
+      )}
+
+      <StrokePalette
+        value={allSameStroke && single ? single.stroke : null}
+        onChange={(c) => onChange({ stroke: c })}
+      />
+
+      {(single?.type === "rect" ||
+        single?.type === "ellipse" ||
+        multi) && (
+        <>
+          <FillPalette
+            value={allSameFill && single ? single.fill : null}
+            onChange={(c) => onChange({ fill: c })}
+          />
+          <PatternGrid
+            value={allSameFillPattern && single ? single.fillPattern : null}
+            onChange={(p) => onChange({ fillPattern: p })}
+          />
+        </>
+      )}
+
+      {(single?.type === "rect" ||
+        single?.type === "ellipse" ||
+        single?.type === "arrow" ||
+        multi) && (
+        <Slider
+          label="Stroke Width"
+          min={1}
+          max={12}
+          value={allSameStrokeWidth && single ? single.strokeWidth : null}
+          onChange={(v) => onChange({ strokeWidth: v })}
+        />
+      )}
+
+      {single?.type === "pen" && (
+        <Slider
+          label="Pen Size"
+          min={1}
+          max={24}
+          value={single.size}
+          onChange={(v) => onUpdateSelected({ size: v })}
+        />
+      )}
+
+      {single?.type === "text" && !multi && (
+        <>
+          <div className="mb-md">
+            <span className="font-label-sm text-on-surface-variant mb-sm block uppercase">
+              Text
+            </span>
+            <textarea
+              value={single.text}
+              onChange={(e) => onUpdateSelected({ text: e.target.value })}
+              rows={3}
+              className="font-body-md border-outline focus:border-primary w-full border bg-transparent p-sm focus:outline-hidden"
+            />
+          </div>
+          <Slider
+            label="Size"
+            min={12}
+            max={72}
+            value={single.fontSize}
+            onChange={(v) => onUpdateSelected({ fontSize: v })}
+          />
+        </>
+      )}
+    </div>
   );
 }
 

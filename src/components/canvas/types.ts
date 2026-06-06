@@ -22,7 +22,7 @@ export const STROKE_OPTIONS: ReadonlyArray<string> = [
   "#1e1b15",
   "#ba1a1a",
   "#536600",
-  "#1c1b1b",
+  "#1c6587",
   "#444748",
   "#fff8f1",
 ];
@@ -115,8 +115,6 @@ export const DEFAULT_TOOL_DEFAULTS: ToolDefaults = {
 };
 
 export const HISTORY_LIMIT = 100;
-export const SNAP_GRID_SIZE = 8;
-export const SNAP_THRESHOLD = 6;
 export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 4;
 

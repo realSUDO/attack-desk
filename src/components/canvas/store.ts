@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useReducer, useRef } from "react";
+import { useCallback, useMemo, useReducer } from "react";
 
 import {
   type Camera,
@@ -21,6 +21,7 @@ type Action =
   | { type: "set"; scene: Scene }
   | { type: "add"; shape: Shape }
   | { type: "update"; id: string; patch: Partial<Shape> }
+  | { type: "updateMany"; updates: ReadonlyArray<{ id: string; patch: Partial<Shape> }> }
   | { type: "remove"; ids: ReadonlyArray<string> }
   | { type: "translate"; ids: ReadonlyArray<string>; dx: number; dy: number }
   | { type: "camera"; patch: Partial<Camera> }
@@ -86,6 +87,18 @@ function reducer(state: State, action: Action): State {
         state,
         updateShapesInScene(state.present, (shapes) =>
           shapes.map((s) => (s.id === action.id ? ({ ...s, ...action.patch } as Shape) : s)),
+        ),
+      );
+    }
+    case "updateMany": {
+      const updateMap = new Map(action.updates.map((u) => [u.id, u.patch]));
+      return withPresent(
+        state,
+        updateShapesInScene(state.present, (shapes) =>
+          shapes.map((s) => {
+            const patch = updateMap.get(s.id);
+            return patch ? ({ ...s, ...patch } as Shape) : s;
+          }),
         ),
       );
     }
@@ -161,15 +174,7 @@ function reducer(state: State, action: Action): State {
         const x = s.x + action.offset;
         const y = s.y + action.offset;
         const z = max + i;
-        if (s.type === "pen") {
-          copies.push({ ...s, id: newId, z, x, y });
-        } else if (s.type === "arrow") {
-          copies.push({ ...s, id: newId, z, x, y });
-        } else if (s.type === "rect" || s.type === "ellipse") {
-          copies.push({ ...s, id: newId, z, x, y });
-        } else {
-          copies.push({ ...s, id: newId, z, x, y });
-        }
+        copies.push({ ...s, id: newId, z, x, y });
       }
       return withPresent(state, updateShapesInScene(state.present, (shapes) => [...shapes, ...copies]));
     }
@@ -214,6 +219,7 @@ export type SceneApi = {
   setScene: (scene: Scene) => void;
   addShape: (shape: Omit<Shape, "id" | "z">) => string;
   updateShape: (id: string, patch: Partial<Shape>) => void;
+  updateMany: (updates: ReadonlyArray<{ id: string; patch: Partial<Shape> }>) => void;
   removeShapes: (ids: ReadonlyArray<string>) => void;
   translateShapes: (ids: ReadonlyArray<string>, dx: number, dy: number) => void;
   setCamera: (patch: Partial<Camera>) => void;
@@ -270,6 +276,7 @@ export function useScene(initial: Scene): SceneApi {
       setScene: (scene) => dispatch({ type: "set", scene }),
       addShape,
       updateShape: (id, patch) => dispatch({ type: "update", id, patch }),
+      updateMany: (updates) => dispatch({ type: "updateMany", updates }),
       removeShapes: (ids) => dispatch({ type: "remove", ids }),
       translateShapes: (ids, dx, dy) => dispatch({ type: "translate", ids, dx, dy }),
       setCamera: (patch) => dispatch({ type: "camera", patch }),
@@ -287,8 +294,4 @@ export function useScene(initial: Scene): SceneApi {
     }),
     [state, addShape, groupShapes, duplicateShapes],
   );
-}
-
-export function useSceneRef(api: SceneApi) {
-  return useRef(api);
 }

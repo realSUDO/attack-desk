@@ -1,11 +1,13 @@
 "use client";
 
+import React from "react";
 import Konva from "konva";
 import { type KonvaEventObject, type Node as KonvaNode } from "konva/lib/Node";
 import {
   type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -54,6 +56,29 @@ type Props = {
 const GRID_SIZE = 24;
 const ARROW_HEAD_SIZE = 12;
 const ERASER_TOLERANCE_SCREEN_PX = 6;
+
+const TRANSFORMER_ANCHORS: string[] = [
+  "top-left",
+  "top-center",
+  "top-right",
+  "middle-left",
+  "middle-right",
+  "bottom-left",
+  "bottom-center",
+  "bottom-right",
+];
+const TRANSFORMER_PROPS = {
+  rotateEnabled: true,
+  keepRatio: false,
+  ignoreStroke: true,
+  anchorSize: 8,
+  anchorStroke: "#1e1b15",
+  anchorFill: "#fff8f1",
+  borderStroke: "#1e1b15",
+  borderDash: [4, 4],
+  enabledAnchors: TRANSFORMER_ANCHORS,
+  strokeScaleEnabled: false,
+};
 
 export function KonvaCanvas({
   api,
@@ -106,18 +131,20 @@ export function KonvaCanvas({
     return () => ro.disconnect();
   }, [containerRef]);
 
-  // Sync transformer to selected nodes (re-runs on selection / shapes change).
-  useEffect(() => {
+  // Sync transformer to selected nodes (re-runs on selection change).
+  useLayoutEffect(() => {
     const tr = transformerRef.current;
-    if (!tr) return;
     const nodes: KonvaNode[] = [];
     for (const id of selectedIds) {
       const n = nodeRefs.current.get(id);
       if (n) nodes.push(n);
     }
-    tr.nodes(nodes);
-    tr.getLayer()?.batchDraw();
-  }, [selectedIds, orderedShapes]);
+    if (tr) {
+      tr.nodes(nodes);
+      tr.forceUpdate();
+      tr.getLayer()?.batchDraw();
+    }
+  }, [selectedIds]);
 
   // Helpers ---------------------------------------------------------------
   const getWorldPoint = useCallback((sx: number, sy: number) => {
@@ -579,18 +606,9 @@ export function KonvaCanvas({
             />
           ))}
           {selectedIds.length > 0 && tool === "select" && (
-            <Transformer
+            <CanvasTransformer
               ref={transformerRef}
-              rotateEnabled
-              anchorSize={8}
-              anchorStroke="#1e1b15"
-              anchorFill="#fff8f1"
-              borderStroke="#1e1b15"
-              borderDash={[4, 4]}
-              keepRatio={false}
-              ignoreStroke
-              onTransformEnd={(e) => {
-                const tr = e.target as unknown as Konva.Transformer;
+              onTransformEnd={(tr) => {
                 tr.getNodes().forEach((node) => {
                   const id = node.id();
                   if (!id) return;
@@ -607,29 +625,47 @@ export function KonvaCanvas({
                       width: Math.max(1, shape.width * scaleX),
                       height: Math.max(1, shape.height * scaleY),
                     });
-                    node.scaleX(1);
-                    node.scaleY(1);
                   } else if (shape.type === "arrow") {
                     api.updateShape(id, {
                       x: node.x(),
                       y: node.y(),
                       rotation,
-                      points: shape.points.map((p) => [
-                        p[0] * scaleX,
-                        p[1] * scaleY,
-                      ] as const),
+                      points: shape.points.map(
+                        (p) => [p[0] * scaleX, p[1] * scaleY] as const,
+                      ),
                     });
-                    node.scaleX(1);
-                    node.scaleY(1);
+                  } else if (shape.type === "pen") {
+                    const points = shape.points.map(
+                      (p) =>
+                        [p[0] * scaleX, p[1] * scaleY, p[2]] as readonly [
+                          number,
+                          number,
+                          number,
+                        ],
+                    );
+                    api.updateShape(id, {
+                      x: node.x(),
+                      y: node.y(),
+                      rotation,
+                      points,
+                    });
                   } else {
                     api.updateShape(id, {
                       x: node.x(),
                       y: node.y(),
                       rotation,
                     });
+                  }
+                });
+                // Reset scale on the Konva nodes after the next paint so the
+                // re-render from updateShape() doesn't snap the node back to
+                // its pre-reset visual state.
+                requestAnimationFrame(() => {
+                  tr.getNodes().forEach((node) => {
                     node.scaleX(1);
                     node.scaleY(1);
-                  }
+                  });
+                  tr.forceUpdate();
                 });
               }}
             />
@@ -643,7 +679,7 @@ export function KonvaCanvas({
 // ---------------------------------------------------------------------
 // Shape renderer
 // ---------------------------------------------------------------------
-function ShapeNode({
+const ShapeNode = React.memo(function ShapeNode({
   shape,
   isDraggable,
   registerNode,
@@ -656,18 +692,48 @@ function ShapeNode({
   onDragEnd: (e: KonvaEventObject<DragEvent>) => void;
   onDblClick: (e: KonvaEventObject<MouseEvent>) => void;
 }) {
+  const cancelMouseDown = useCallback(
+    (e: KonvaEventObject<MouseEvent>) => {
+      e.cancelBubble = true;
+    },
+    [],
+  );
   const commonProps = {
     id: shape.id,
     x: shape.x,
     y: shape.y,
     rotation: shape.rotation,
     draggable: isDraggable,
+    strokeScaleEnabled: false,
     onDragEnd,
     onDblClick,
-    onMouseDown: (e: KonvaEventObject<MouseEvent>) => {
-      e.cancelBubble = true;
-    },
+    onMouseDown: cancelMouseDown,
   };
+
+  const penData = useMemo(
+    () =>
+      shape.type === "pen"
+        ? getPenPathData(shape.points, shape.size)
+        : "",
+    [shape],
+  );
+  const arrowData = useMemo(
+    () =>
+      shape.type === "arrow" ? flatArrowPoints(shape.points) : [],
+    [shape],
+  );
+  const ellipseOffsets = useMemo(
+    () =>
+      shape.type === "ellipse"
+        ? {
+            rx: Math.abs(shape.width) / 2,
+            ry: Math.abs(shape.height) / 2,
+            cx: shape.width >= 0 ? shape.width / 2 : -shape.width / 2,
+            cy: shape.height >= 0 ? shape.height / 2 : -shape.height / 2,
+          }
+        : null,
+    [shape],
+  );
 
   if (shape.type === "rect") {
     return (
@@ -678,27 +744,23 @@ function ShapeNode({
         height={shape.height}
         stroke={shape.stroke}
         strokeWidth={shape.strokeWidth}
-        fill={shape.fillPattern === "none" ? shape.fill : shape.fill}
+        fill={shape.fill}
         listening
       />
     );
   }
-  if (shape.type === "ellipse") {
-    const rx = Math.abs(shape.width) / 2;
-    const ry = Math.abs(shape.height) / 2;
-    const cx = shape.width >= 0 ? rx : -rx;
-    const cy = shape.height >= 0 ? ry : -ry;
+  if (shape.type === "ellipse" && ellipseOffsets) {
     return (
       <Ellipse
         {...commonProps}
         ref={registerNode as unknown as (n: Konva.Ellipse | null) => void}
-        x={shape.x + cx}
-        y={shape.y + cy}
-        radiusX={rx}
-        radiusY={ry}
+        x={shape.x + ellipseOffsets.cx}
+        y={shape.y + ellipseOffsets.cy}
+        radiusX={ellipseOffsets.rx}
+        radiusY={ellipseOffsets.ry}
         stroke={shape.stroke}
         strokeWidth={shape.strokeWidth}
-        fill={shape.fillPattern === "none" ? shape.fill : shape.fill}
+        fill={shape.fill}
         listening
       />
     );
@@ -708,7 +770,7 @@ function ShapeNode({
       <Arrow
         {...commonProps}
         ref={registerNode as unknown as (n: Konva.Arrow | null) => void}
-        points={flatArrowPoints(shape.points)}
+        points={arrowData}
         stroke={shape.stroke}
         fill={shape.stroke}
         strokeWidth={shape.strokeWidth}
@@ -721,8 +783,7 @@ function ShapeNode({
     );
   }
   if (shape.type === "pen") {
-    const data = getPenPathData(shape.points, shape.size);
-    if (!data) {
+    if (!penData) {
       return (
         <Path
           {...commonProps}
@@ -736,7 +797,7 @@ function ShapeNode({
       <Path
         {...commonProps}
         ref={registerNode as unknown as (n: Konva.Path | null) => void}
-        data={data}
+        data={penData}
         fill={shape.stroke}
         listening
       />
@@ -758,7 +819,23 @@ function ShapeNode({
     );
   }
   return null;
-}
+});
+
+const CanvasTransformer = React.memo(
+  React.forwardRef<Konva.Transformer, { onTransformEnd: (tr: Konva.Transformer) => void }>(
+    function CanvasTransformer({ onTransformEnd }, ref) {
+      return (
+        <Transformer
+          ref={ref}
+          {...TRANSFORMER_PROPS}
+          onTransformEnd={(e) => {
+            onTransformEnd(e.target as unknown as Konva.Transformer);
+          }}
+        />
+      );
+    },
+  ),
+);
 
 function circlePath(r: number): string {
   return `M ${-r} 0 a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 ${-r * 2} 0`;

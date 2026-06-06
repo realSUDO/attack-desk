@@ -16,16 +16,24 @@ type Props = {
   onSave: () => void;
 };
 
-const TOOLS: ReadonlyArray<{ tool: Tool; label: string; icon: string }> = [
-  { tool: "select", label: "Select (V)", icon: "arrow_selector_tool" },
-  { tool: "pan", label: "Pan (H)", icon: "pan_tool" },
-  { tool: "pen", label: "Pen (P)", icon: "draw" },
-  { tool: "rect", label: "Rectangle (R)", icon: "rectangle" },
-  { tool: "ellipse", label: "Ellipse (O)", icon: "circle" },
-  { tool: "arrow", label: "Arrow (A)", icon: "arrow_forward" },
-  { tool: "text", label: "Text (T)", icon: "title" },
-  { tool: "eraser", label: "Eraser (E)", icon: "ink_eraser" },
+const TOOLS: ReadonlyArray<{ tool: Tool; label: string; icon: string; key: string }> = [
+  { tool: "select", label: "Select (V)", icon: "arrow_selector_tool", key: "V" },
+  { tool: "pan", label: "Pan (H)", icon: "pan_tool", key: "H" },
+  { tool: "pen", label: "Pen (P)", icon: "draw", key: "P" },
+  { tool: "rect", label: "Rectangle (R)", icon: "rectangle", key: "R" },
+  { tool: "ellipse", label: "Ellipse (O)", icon: "circle", key: "O" },
+  { tool: "arrow", label: "Arrow (A)", icon: "arrow_forward", key: "A" },
+  { tool: "text", label: "Text (T)", icon: "title", key: "T" },
+  { tool: "eraser", label: "Eraser (E)", icon: "ink_eraser", key: "E" },
 ];
+
+const TOOL_KEY_LABEL: Record<Tool, string> = TOOLS.reduce(
+  (acc, t) => {
+    acc[t.tool] = t.key;
+    return acc;
+  },
+  {} as Record<Tool, string>,
+);
 
 export function CanvasToolbar({
   tool,
@@ -61,21 +69,7 @@ export function CanvasToolbar({
           );
         })}
         <span className="font-metadata text-metadata text-on-surface-variant mx-sm hidden lg:inline">
-          {tool === "select"
-            ? "V"
-            : tool === "pan"
-              ? "H"
-              : tool === "pen"
-                ? "P"
-                : tool === "rect"
-                  ? "R"
-                  : tool === "ellipse"
-                    ? "O"
-                    : tool === "arrow"
-                      ? "A"
-                      : tool === "text"
-                        ? "T"
-                        : "E"}
+          {TOOL_KEY_LABEL[tool]}
         </span>
       </div>
 

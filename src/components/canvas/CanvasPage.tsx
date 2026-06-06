@@ -30,6 +30,8 @@ import {
   type Tool,
   type ToolDefaults,
   DEFAULT_TOOL_DEFAULTS,
+  MAX_ZOOM,
+  MIN_ZOOM,
 } from "./types";
 
 type LinkedRef = {
@@ -279,6 +281,13 @@ export function CanvasPage({
     [api, selectedIds],
   );
 
+  const handleUpdateSelectedBatch = useCallback(
+    (patch: Partial<Shape>) => {
+      api.updateMany(selectedIds.map((id) => ({ id, patch })));
+    },
+    [api, selectedIds],
+  );
+
   const handleUpdateToolDefaults = useCallback((patch: Partial<ToolDefaults>) => {
     setToolDefaults((prev) => ({ ...prev, ...patch }));
   }, []);
@@ -404,6 +413,7 @@ export function CanvasPage({
             toolDefaults={toolDefaults}
             onUpdateToolDefaults={handleUpdateToolDefaults}
             onUpdateSelected={handleUpdateSelected}
+            onUpdateSelectedBatch={handleUpdateSelectedBatch}
             onDeleteSelected={handleDeleteSelected}
             linkedMissions={linked.missions}
             linkedDeadlines={linked.deadlines}
@@ -482,7 +492,7 @@ function ZoomControls({
     <div className="border-outline-variant bg-surface absolute bottom-lg left-1/2 z-40 flex -translate-x-1/2 overflow-hidden border">
       <button
         type="button"
-        onClick={() => onZoom(Math.max(0.2, zoom * 0.8))}
+        onClick={() => onZoom(Math.max(MIN_ZOOM, zoom * 0.8))}
         className="hover:bg-surface-container-highest border-outline-variant flex h-10 w-10 items-center justify-center border-r"
         aria-label="Zoom out"
       >
@@ -493,7 +503,7 @@ function ZoomControls({
       </div>
       <button
         type="button"
-        onClick={() => onZoom(Math.min(4, zoom * 1.25))}
+        onClick={() => onZoom(Math.min(MAX_ZOOM, zoom * 1.25))}
         className="hover:bg-surface-container-highest border-outline-variant flex h-10 w-10 items-center justify-center border-l"
         aria-label="Zoom in"
       >

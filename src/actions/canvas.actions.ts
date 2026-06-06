@@ -18,7 +18,6 @@ import {
 import {
   type ActionResult,
   createCanvasSchema,
-  updateCanvasSchema,
   validationFields,
 } from "@/lib/validators";
 
@@ -61,38 +60,6 @@ export async function createCanvasAction(
     }
 
     return { success: false, message: "Unable to create canvas" };
-  }
-}
-
-export async function updateCanvasTitleAction(
-  id: string,
-  formData: FormData,
-): Promise<ActionResult> {
-  try {
-    if (!(await getCanvasById(id))) {
-      return { success: false, message: "Canvas not found" };
-    }
-
-    const input = updateCanvasSchema.parse({
-      title: getOptionalFormString(formData, "title"),
-    });
-    await updateCanvas(id, input);
-    revalidateCanvasPaths();
-
-    return {
-      success: true,
-      message: "Canvas title updated successfully",
-    };
-  } catch (error) {
-    if (error instanceof ZodError) {
-      return {
-        success: false,
-        message: "Validation failed",
-        fields: validationFields(error),
-      };
-    }
-
-    return { success: false, message: "Unable to update canvas title" };
   }
 }
 
