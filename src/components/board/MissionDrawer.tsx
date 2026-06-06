@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect } from "react";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
@@ -118,8 +119,8 @@ export function MissionDrawer({ mission, onClose }: Props) {
                 </span>
                 <div className="flex flex-col gap-sm">
                   {mission.canvas && (
-                    <a
-                      href="/canvas"
+                    <Link
+                      href={`/canvas/${mission.canvas.id}`}
                       className="border-outline-variant hover:border-primary group flex items-center justify-between p-md border transition-all"
                     >
                       <div className="flex items-center gap-md">
@@ -138,7 +139,7 @@ export function MissionDrawer({ mission, onClose }: Props) {
                         </div>
                       </div>
                       <MaterialIcon name="arrow_forward" size={18} />
-                    </a>
+                    </Link>
                   )}
                   {mission.deadline && (
                     <a
