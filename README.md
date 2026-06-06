@@ -72,6 +72,12 @@ Missions can be tied to deadlines and canvases. Canvases can reference deadlines
 
 ---
 
+### Video preview
+https://github.com/user-attachments/assets/4879db5b-f45d-47cf-83da-db4bb8975b59
+
+---
+
+
 ## Features
 
 ### Command Dashboard
@@ -101,8 +107,6 @@ A structured weekly reflection form. Each review covers a date range and four fi
 ### Showcase
 An ISR-rendered public stats page showing total and completed counts across missions, deadlines, posts, and canvases. Revalidates every 60 seconds.
 
-### Video preview
-https://github.com/user-attachments/assets/4879db5b-f45d-47cf-83da-db4bb8975b59
 
 ---
 
