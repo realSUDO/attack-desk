@@ -1,36 +1,113 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AttackDesk
 
-## Getting Started
+## Project Overview
 
-First, run the development server:
+AttackDesk is a visual execution workspace for missions, deadlines, post
+ideas, canvases, and weekly reviews. This repository currently provides the
+backend foundation and minimal rendering-strategy demonstration pages.
+
+## Tech Stack
+
+- Next.js App Router
+- TypeScript
+- Prisma
+- PostgreSQL / Neon
+- Zod
+- Server Actions
+- Route Handlers
+
+## Environment Variables
+
+Create `.env` from `.env.example` and set a real PostgreSQL connection:
+
+```bash
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require"
+```
+
+## Database Setup
+
+```bash
+npm install
+npx prisma generate
+npx prisma migrate dev
+```
+
+## Run Locally
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## API Routes
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `GET /api/missions`
+- `POST /api/missions`
+- `GET /api/missions/[id]`
+- `PATCH /api/missions/[id]`
+- `DELETE /api/missions/[id]`
+- `GET /api/deadlines`
+- `POST /api/deadlines`
+- `GET /api/deadlines/[id]`
+- `PATCH /api/deadlines/[id]`
+- `DELETE /api/deadlines/[id]`
+- `GET /api/posts`
+- `POST /api/posts`
+- `GET /api/posts/[id]`
+- `PATCH /api/posts/[id]`
+- `DELETE /api/posts/[id]`
+- `GET /api/canvases`
+- `POST /api/canvases`
+- `GET /api/canvases/[id]`
+- `PATCH /api/canvases/[id]`
+- `DELETE /api/canvases/[id]`
+- `GET /api/weekly-reviews`
+- `POST /api/weekly-reviews`
+- `GET /api/weekly-reviews/[id]`
+- `PATCH /api/weekly-reviews/[id]`
+- `DELETE /api/weekly-reviews/[id]`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Server Actions
 
-## Learn More
+- `src/actions/mission.actions.ts`: create, update, complete, delete
+- `src/actions/deadline.actions.ts`: create, update, complete, delete
+- `src/actions/post.actions.ts`: create, update, mark ready, mark posted, delete
+- `src/actions/canvas.actions.ts`: create, update title, delete
+- `src/actions/weekly-review.actions.ts`: create, update, delete
 
-To learn more about Next.js, take a look at the following resources:
+## Rendering Strategies
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- SSG: `/`
+- SSR/dynamic: `/dashboard`, `/board`, `/post-lab`, `/canvas`
+- ISR: `/showcase` (60-second revalidation)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## API Routes vs Server Actions
 
-## Deploy on Vercel
+Route Handlers provide REST-style CRUD for programmatic access, API testing,
+future drag-and-drop updates, and canvas autosave.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Server Actions handle internal form submissions in the Next.js application.
+They return plain objects and trigger route revalidation after mutations.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Assignment Concepts Covered
+
+- File-based routing
+- Layouts
+- Multiple pages and routes
+- SSR
+- SSG
+- ISR
+- API Route Handlers
+- GET, POST, PATCH, and DELETE
+- Prisma database integration
+- Structured API responses
+- Validation and error handling
+- Server Actions
+- `"use server"` directive
+
+## Assumptions / Limitations
+
+- Single-user app
+- No authentication in V1
+- Canvas data is stored as JSON
+- PostgreSQL is required
+- Frontend polish will be added later

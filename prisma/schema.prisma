@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MissionStatus {
+  PLANNED
+  DOING
+  DONE
+}
+
+enum DeadlineStatus {
+  ACTIVE
+  COMPLETED
+  MISSED
+}
+
+enum PostStatus {
+  IDEA
+  DRAFTING
+  READY
+  POSTED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Mission {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  status      MissionStatus @default(PLANNED)
+  priority    Priority      @default(MEDIUM)
+  category    String?
+  dueDate     DateTime?
+  order       Int           @default(0)
+
+  deadlineId String?
+  deadline   Deadline? @relation(fields: [deadlineId], references: [id], onDelete: SetNull)
+
+  canvasId String?
+  canvas   Canvas? @relation(fields: [canvasId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@index([deadlineId])
+  @@index([canvasId])
+  @@index([dueDate])
+}
+
+model Deadline {
+  id          String         @id @default(cuid())
+  title       String
+  description String?
+  dueDate     DateTime
+  category    String?
+  status      DeadlineStatus @default(ACTIVE)
+  priority    Priority       @default(MEDIUM)
+  link        String?
+
+  missions Mission[]
+  canvases Canvas[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@index([category])
+  @@index([dueDate])
+}
+
+model PostIdea {
+  id           String     @id @default(cuid())
+  title        String
+  hook         String?
+  draft        String?
+  finalContent String?
+  category     String?
+  status       PostStatus @default(IDEA)
+  postedUrl    String?
+  order        Int        @default(0)
+
+  canvasId String?
+  canvas   Canvas? @relation(fields: [canvasId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([category])
+  @@index([canvasId])
+}
+
+model Canvas {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+  data        Json?
+  thumbnail   String?
+
+  deadlineId String?
+  deadline   Deadline? @relation(fields: [deadlineId], references: [id], onDelete: SetNull)
+
+  missions  Mission[]
+  postIdeas PostIdea[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([deadlineId])
+}
+
+model WeeklyReview {
+  id        String   @id @default(cuid())
+  weekStart DateTime
+  weekEnd   DateTime
+
+  wentRight String?
+  wentWrong String?
+  nextPlan  String?
+  finalNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([weekStart])
+  @@index([weekEnd])
+}
