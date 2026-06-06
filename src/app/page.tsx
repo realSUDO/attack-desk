@@ -1,8 +1,17 @@
-export default function Home() {
+import { BentoSection } from "@/components/landing/BentoSection";
+import { Footer } from "@/components/landing/Footer";
+import { Header } from "@/components/landing/Header";
+import { HeroParallax } from "@/components/landing/HeroParallax";
+import { HeroSection } from "@/components/landing/HeroSection";
+
+export default function HomePage() {
   return (
-    <main>
-      <h1>AttackDesk</h1>
-      <p>Backend foundation ready.</p>
-    </main>
+    <>
+      <Header />
+      <HeroSection />
+      <BentoSection />
+      <Footer />
+      <HeroParallax />
+    </>
   );
 }
