@@ -62,6 +62,7 @@ export default async function DashboardPage() {
       ? {
           id: stats.recentCanvas.id,
           title: stats.recentCanvas.title,
+          thumbnail: stats.recentCanvas.thumbnail ?? null,
           updatedAtMinutesAgo: Math.max(
             0,
             Math.floor((stats.fetchedAt - stats.recentCanvas.updatedAt.getTime()) / 60000),
@@ -271,12 +272,16 @@ export default async function DashboardPage() {
               </p>
             </div>
             <div className="border-on-primary/20 relative mt-xl h-[120px] overflow-hidden border">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-on-primary via-transparent to-transparent opacity-10" />
-              <div className="flex h-full items-center justify-center">
-                <span className="font-label-md text-label-md tracking-widest opacity-40">
-                  CANVAS_PREVIEW_NULL
-                </span>
-              </div>
+              {recentCanvas?.thumbnail ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={recentCanvas.thumbnail} alt="Canvas preview" className="h-full w-full object-cover object-top" />
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <span className="font-label-md text-label-md tracking-widest opacity-40">
+                    NO PREVIEW
+                  </span>
+                </div>
+              )}
             </div>
           </Link>
         </div>

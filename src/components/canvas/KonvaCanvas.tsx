@@ -11,6 +11,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   Arrow,
@@ -845,9 +846,22 @@ export function KonvaCanvas({
     [tool],
   );
 
+  const isDark = useSyncExternalStore(
+    (cb) => { const obs = new MutationObserver(cb); obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] }); return () => obs.disconnect(); },
+    () => document.documentElement.classList.contains("dark"),
+    () => false,
+  );
+
   const isDrawing = tool === "pen" || tool === "rect" || tool === "ellipse" || tool === "arrow" || tool === "eraser";
   const stageStyle = useMemo<React.CSSProperties>(
-    () => ({
+    () => isDark ? ({
+      backgroundColor: "#1a1a1a",
+      backgroundImage:
+        "linear-gradient(to right, rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.07) 1px, transparent 1px)",
+      backgroundSize: `${GRID_SIZE * scene.camera.zoom}px ${GRID_SIZE * scene.camera.zoom}px`,
+      backgroundPosition: `${scene.camera.x}px ${scene.camera.y}px`,
+      cursor: cursorForTool(tool),
+    }) : ({
       backgroundColor: "#fff8f1",
       backgroundImage:
         "linear-gradient(to right, rgba(30, 27, 21, 0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(30, 27, 21, 0.08) 1px, transparent 1px)",
@@ -856,6 +870,7 @@ export function KonvaCanvas({
       cursor: cursorForTool(tool),
     }),
     [
+      isDark,
       scene.camera.zoom,
       scene.camera.x,
       scene.camera.y,
@@ -890,6 +905,7 @@ export function KonvaCanvas({
             <ShapeNode
               key={shape.id}
               shape={shape}
+              isDark={isDark}
               isDraggable={tool === "select" && !isDrawing}
               isHidden={shape.id === editingTextId}
               registerNode={registerNode}
@@ -1041,8 +1057,19 @@ export function KonvaCanvas({
 // ---------------------------------------------------------------------
 // Shape renderer
 // ---------------------------------------------------------------------
+
+// Map "default" light-mode colors to dark equivalents at render time
+// so shapes are visible without mutating stored data.
+function adaptColor(color: string, isDark: boolean): string {
+  if (!isDark) return color;
+  if (color === "#1e1b15" || color === "#000000" || color === "#000") return "#f0ede8";
+  if (color === "#fff8f1" || color === "#ffffff" || color === "#fff") return "#1a1a1a";
+  return color;
+}
+
 const ShapeNode = React.memo(function ShapeNode({
   shape,
+  isDark,
   isDraggable,
   isHidden,
   registerNode,
@@ -1051,6 +1078,7 @@ const ShapeNode = React.memo(function ShapeNode({
   onHover,
 }: {
   shape: Shape;
+  isDark: boolean;
   isDraggable: boolean;
   isHidden: boolean;
   registerNode: (id: string, n: KonvaNode | null) => void;
@@ -1096,6 +1124,11 @@ const ShapeNode = React.memo(function ShapeNode({
     onPointerLeave: () => onHover(false),
   };
 
+  // Adapt colors for dark mode without mutating stored shape data
+  const stroke = adaptColor(shape.stroke, isDark);
+  const fill = adaptColor(shape.fill, isDark);
+  const strokeWidth = shape.strokeWidth;
+
   const penData = useMemo(
     () =>
       shape.type === "pen"
@@ -1106,9 +1139,9 @@ const ShapeNode = React.memo(function ShapeNode({
   const patternImage = useMemo(
     () =>
       shape.type === "rect" || shape.type === "ellipse"
-        ? getFillPatternImage(shape.fillPattern, shape.fill, shape.stroke)
+        ? getFillPatternImage(shape.fillPattern, fill, stroke)
         : undefined,
-    [shape],
+    [shape, fill, stroke],
   );
   const ellipseOffsets = useMemo(
     () =>
@@ -1132,9 +1165,9 @@ const ShapeNode = React.memo(function ShapeNode({
         ref={setRef as unknown as (n: Konva.Rect | null) => void}
         width={shape.width}
         height={shape.height}
-        stroke={shape.stroke}
-        strokeWidth={shape.strokeWidth}
-        fill={patternImage ? undefined : shape.fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        fill={patternImage ? undefined : fill}
         fillPatternImage={patternImage}
         fillPatternRepeat="repeat"
         fillPriority={patternImage ? "pattern" : "color"}
@@ -1155,9 +1188,9 @@ const ShapeNode = React.memo(function ShapeNode({
           y={ellipseOffsets.cy}
           radiusX={ellipseOffsets.rx}
           radiusY={ellipseOffsets.ry}
-          stroke={shape.stroke}
-          strokeWidth={shape.strokeWidth}
-          fill={patternImage ? undefined : shape.fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          fill={patternImage ? undefined : fill}
           fillPatternImage={patternImage}
           fillPatternRepeat="repeat"
           fillPriority={patternImage ? "pattern" : "color"}
@@ -1172,11 +1205,11 @@ const ShapeNode = React.memo(function ShapeNode({
         {...commonProps}
         ref={setRef as unknown as (n: Konva.Arrow | null) => void}
         points={flatArrowPoints(shape.points)}
-        stroke={shape.stroke}
-        fill={shape.stroke}
-        strokeWidth={shape.strokeWidth}
-        pointerLength={arrowHeadLength(shape.strokeWidth)}
-        pointerWidth={arrowHeadWidth(shape.strokeWidth)}
+        stroke={stroke}
+        fill={stroke}
+        strokeWidth={strokeWidth}
+        pointerLength={arrowHeadLength(strokeWidth)}
+        pointerWidth={arrowHeadWidth(strokeWidth)}
         lineCap="round"
         lineJoin="round"
         tension={0.18}
@@ -1192,7 +1225,7 @@ const ShapeNode = React.memo(function ShapeNode({
           ref={setRef as unknown as (n: Konva.Path | null) => void}
           penSize={shape.size}
           data={circlePath(Math.max(1, shape.size / 2))}
-          fill={shape.stroke}
+          fill={stroke}
         />
       );
     }
@@ -1202,7 +1235,7 @@ const ShapeNode = React.memo(function ShapeNode({
         ref={setRef as unknown as (n: Konva.Path | null) => void}
         penSize={shape.size}
         data={penData}
-        fill={shape.stroke}
+        fill={stroke}
         listening
       />
     );
@@ -1216,7 +1249,7 @@ const ShapeNode = React.memo(function ShapeNode({
         fontSize={shape.fontSize}
         fontFamily={schoolbell.style.fontFamily}
         fontStyle="normal"
-        fill={shape.stroke}
+        fill={stroke}
         lineHeight={1.2}
         width={shape.width}
         align={shape.align ?? "left"}
@@ -1352,7 +1385,7 @@ function shapeBounds(shape: Shape): Bounds | null {
       if (p[1] < minY) minY = p[1];
       if (p[1] > maxY) maxY = p[1];
     }
-    const pad = arrowHeadLength(shape.strokeWidth) + shape.strokeWidth;
+    const pad = arrowHeadLength(strokeWidth) + strokeWidth;
     return {
       x: shape.x + minX - pad,
       y: shape.y + minY - pad,
@@ -1486,7 +1519,7 @@ function pointInArrow(
   tolerance: number,
 ): boolean {
   if (shape.points.length < 2) return false;
-  const w = shape.strokeWidth + tolerance;
+  const w = strokeWidth + tolerance;
   for (let i = 1; i < shape.points.length; i += 1) {
     const a = shape.points[i - 1]!;
     const b = shape.points[i]!;
@@ -1494,7 +1527,7 @@ function pointInArrow(
   }
   const last = shape.points[shape.points.length - 1]!;
   const prev = shape.points[shape.points.length - 2]!;
-  const head = arrowHeadLength(shape.strokeWidth);
+  const head = arrowHeadLength(strokeWidth);
   const dx = last[0] - prev[0];
   const dy = last[1] - prev[1];
   const len = Math.hypot(dx, dy) || 1;
@@ -1504,7 +1537,7 @@ function pointInArrow(
   const baseY = last[1] - uy * head;
   const px = -uy;
   const py = ux;
-  const halfWidth = arrowHeadWidth(shape.strokeWidth) / 2;
+  const halfWidth = arrowHeadWidth(strokeWidth) / 2;
   const a1x = baseX + px * halfWidth;
   const a1y = baseY + py * halfWidth;
   const a2x = baseX - px * halfWidth;

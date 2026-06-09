@@ -27,6 +27,7 @@ export type DashboardStats = {
     id: string;
     title: string;
     updatedAt: Date;
+    thumbnail: string | null;
   } | null;
   todaysFocus: {
     title: string;
@@ -58,7 +59,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       }),
       prisma.canvas.findFirst({
         orderBy: { updatedAt: "desc" },
-        select: { id: true, title: true, updatedAt: true },
+        select: { id: true, title: true, updatedAt: true, thumbnail: true },
       }),
       prisma.mission.findFirst({
         where: { status: "DOING" },
