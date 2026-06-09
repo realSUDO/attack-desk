@@ -30,8 +30,8 @@ export function HeroSection() {
         {/* Left */}
         <div className="flex flex-col gap-10 md:col-span-6">
           <div className="space-y-4">
-            <h1 className="font-display text-display max-w-lg text-primary">
-              AttackDesk
+            <h1 className="font-display text-display max-w-lg">
+              <span className="text-[#ff9166]">Attack</span><span className="text-on-surface">Desk</span>
             </h1>
             <p className="font-headline-lg text-headline-lg leading-tight text-on-surface-variant">
               Plan your day. Map your ideas. Track your deadlines. Ship your
@@ -47,13 +47,13 @@ export function HeroSection() {
           <div className="mt-2 flex flex-wrap gap-4">
             <a
               href="/dashboard"
-              className="border border-primary bg-primary px-10 py-4 font-label-md text-label-md text-on-primary transition-all duration-300 hover:bg-surface-container-highest hover:text-primary"
+              className="border border-[#ff9166] bg-[#ff9166] px-10 py-4 font-label-md text-label-md text-[#0d0d0d] shadow-[2px_2px_0px_#0d0d0d] transition-all duration-300 hover:bg-transparent hover:text-[#ff9166] hover:shadow-none"
             >
               OPEN WORKSPACE
             </a>
             <a
               href="#methodology"
-              className="border border-outline bg-transparent px-10 py-4 font-label-md text-label-md text-primary transition-all duration-300 hover:bg-surface-container-low"
+              className="border border-outline bg-transparent px-10 py-4 font-label-md text-label-md text-primary shadow-[2px_2px_0px_#0d0d0d] transition-all duration-300 hover:bg-surface-container-low hover:shadow-none"
             >
               VIEW DEMO
             </a>

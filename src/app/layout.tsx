@@ -44,7 +44,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${hankenGrotesk.variable} ${geist.variable} ${geistMono.variable} ${schoolbell.variable}`}
+      className={`dark ${hankenGrotesk.variable} ${geist.variable} ${geistMono.variable} ${schoolbell.variable}`}
     >
       <head>
         {/* eslint-disable-next-line @next/next/no-page-custom-font -- App Router: external font stylesheet, not a pages-router <link> */}
