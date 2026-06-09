@@ -929,15 +929,16 @@ export function KonvaCanvas({
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
-        e.preventDefault();
         const stage = stageRef.current;
         if (!stage) return;
+        const rect = container.getBoundingClientRect();
         const t1 = e.touches[0]!;
         const t2 = e.touches[1]!;
         initialDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         initialZoom = stage.scaleX();
-        midX = (t1.clientX + t2.clientX) / 2;
-        midY = (t1.clientY + t2.clientY) / 2;
+        midX = (t1.clientX + t2.clientX) / 2 - rect.left;
+        midY = (t1.clientY + t2.clientY) / 2 - rect.top;
+        e.preventDefault();
       }
     };
 
@@ -946,13 +947,12 @@ export function KonvaCanvas({
         e.preventDefault();
         const stage = stageRef.current;
         if (!stage || initialDist === 0) return;
+        const rect = container.getBoundingClientRect();
         const t1 = e.touches[0]!;
         const t2 = e.touches[1]!;
         const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, initialZoom * (dist / initialDist)));
 
-        const pointer = stage.getPointerPosition();
-        if (!pointer) return;
         const worldUnderPointer = {
           x: (midX - stage.x()) / initialZoom,
           y: (midY - stage.y()) / initialZoom,
@@ -971,14 +971,12 @@ export function KonvaCanvas({
       }
     };
 
-    const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) {
-        const stage = stageRef.current;
-        if (stage) {
-          setCamera({ x: stage.x(), y: stage.y(), zoom: stage.scaleX() });
-        }
-        initialDist = 0;
+    const onTouchEnd = () => {
+      const stage = stageRef.current;
+      if (stage) {
+        setCamera({ x: stage.x(), y: stage.y(), zoom: stage.scaleX() });
       }
+      initialDist = 0;
     };
 
     container.addEventListener("touchstart", onTouchStart, { passive: false });
@@ -1086,8 +1084,8 @@ export function KonvaCanvas({
               y={marquee.y}
               width={marquee.width}
               height={marquee.height}
-              fill="rgba(30, 27, 21, 0.04)"
-              stroke="#1e1b15"
+              fill={isDark ? "rgba(102, 176, 255, 0.08)" : "rgba(30, 27, 21, 0.04)"}
+              stroke={isDark ? "#66b0ff" : "#1e1b15"}
               strokeWidth={1}
               dash={[4, 4]}
               listening={false}
