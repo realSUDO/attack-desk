@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 
 export type BoardMission = {
@@ -45,7 +46,7 @@ type Props = {
   onSelect: (id: string) => void;
 };
 
-export function MissionCard({ mission, onSelect }: Props) {
+export const MissionCard = memo(function MissionCard({ mission, onSelect }: Props) {
   const style = priorityStyles[mission.priority];
   const isDoing = mission.status === "DOING";
   const isDone = mission.status === "DONE";
@@ -111,4 +112,4 @@ export function MissionCard({ mission, onSelect }: Props) {
       </div>
     </div>
   );
-}
+});
