@@ -31,6 +31,7 @@ export function CanvasList({ databaseAvailable }: Props) {
   const [isCreating, setIsCreating] = useState(false);
   const [title, setTitle] = useState("");
   const [showLimitModal, setShowLimitModal] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [canvases, setCanvases] = useState<CanvasItem[]>(() => {
     if (isSignedIn) {
       try {
@@ -87,6 +88,27 @@ export function CanvasList({ databaseAvailable }: Props) {
       );
     }
   }, [isSignedIn, fetchData]);
+
+  const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!window.confirm("Delete this canvas? This cannot be undone.")) return;
+    setDeletingId(id);
+    if (!isSignedIn) {
+      const { localDeleteCanvas } = require("@/lib/local-storage-db");
+      localDeleteCanvas(id);
+      setCanvases((prev) => prev.filter((c) => c.id !== id));
+      setDeletingId(null);
+      return;
+    }
+    startTransition(async () => {
+      const { deleteCanvasAction } = await import("@/actions/canvas.actions");
+      const result = await deleteCanvasAction(id);
+      if (result.success) {
+        setCanvases((prev) => prev.filter((c) => c.id !== id));
+      }
+      setDeletingId(null);
+    });
+  }, [isSignedIn]);
 
   const handleCreate = () => {
     if (!title.trim()) return;
@@ -197,8 +219,17 @@ export function CanvasList({ databaseAvailable }: Props) {
             <Link
               key={c.id}
               href={`/canvas/${c.id}`}
-              className="border-outline-variant bg-surface-container-low hover:border-primary hover:bg-surface-container group block border border-l-4 border-l-outline p-md transition-all hover:border-l-primary"
+              className="border-outline-variant bg-surface-container-low hover:border-primary hover:bg-surface-container group relative block border border-l-4 border-l-outline p-md transition-all hover:border-l-primary"
             >
+              {/* Delete button */}
+              <button
+                type="button"
+                onClick={(e) => handleDelete(c.id, e)}
+                disabled={deletingId === c.id}
+                className="text-on-surface-variant hover:bg-error hover:text-on-error active:opacity-90 absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-colors disabled:opacity-50"
+              >
+                <MaterialIcon name="delete" size={16} />
+              </button>
               {/* Thumbnail strip */}
               <div className="bg-surface-container-highest mb-md flex h-16 items-center justify-center overflow-hidden border border-outline-variant group-hover:border-primary/30">
                 <MaterialIcon name="auto_fix_high" size={24} className="text-on-surface-variant group-hover:text-primary opacity-40 transition-colors" />
