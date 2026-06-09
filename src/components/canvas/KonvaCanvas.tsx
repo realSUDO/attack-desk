@@ -64,6 +64,8 @@ type Props = {
   stageRef: RefObject<Konva.Stage | null>;
   editingTextId: string | null;
   onDrawingEnd?: () => void;
+  onPinchStart?: () => void;
+  onPinchEnd?: () => void;
 };
 
 const GRID_SIZE = 24;
@@ -116,6 +118,8 @@ export function KonvaCanvas({
   stageRef,
   editingTextId,
   onDrawingEnd,
+  onPinchStart,
+  onPinchEnd,
 }: Props) {
   const { scene } = api;
   const setCamera = api.setCamera;
@@ -930,6 +934,7 @@ export function KonvaCanvas({
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         e.preventDefault();
+        onPinchStart?.();
         const stage = stageRef.current;
         if (!stage) return;
         const t1 = e.touches[0]!;
@@ -971,6 +976,7 @@ export function KonvaCanvas({
 
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2) {
+        onPinchEnd?.();
         const stage = stageRef.current;
         if (stage) {
           setCamera({ x: stage.x(), y: stage.y(), zoom: stage.scaleX() });
@@ -987,7 +993,7 @@ export function KonvaCanvas({
       container.removeEventListener("touchmove", onTouchMove);
       container.removeEventListener("touchend", onTouchEnd);
     };
-  }, [containerRef, stageRef, setCamera]);
+  }, [containerRef, stageRef, setCamera, onPinchStart, onPinchEnd]);
 
   const onShapeDblClick = useCallback(
     (shape: Shape, e: KonvaEventObject<MouseEvent>) => {

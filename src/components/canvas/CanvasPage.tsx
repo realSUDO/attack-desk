@@ -111,6 +111,7 @@ export function CanvasPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   const saveSequenceRef = useRef(0);
+  const prevToolRef = useRef<Tool>("select");
 
   const selectedShapes = useMemo<ReadonlyArray<Shape>>(() => {
     const set = new Set(selectedIds);
@@ -173,6 +174,17 @@ export function CanvasPage({
 
   const handleDrawingEnd = useCallback(() => {
     setTool("select");
+  }, []);
+
+  const handlePinchStart = useCallback(() => {
+    prevToolRef.current = tool;
+    if (tool !== "pan" && tool !== "select") {
+      setTool("pan");
+    }
+  }, [tool]);
+
+  const handlePinchEnd = useCallback(() => {
+    setTool(prevToolRef.current);
   }, []);
 
   const handleRequestTextEdit = useCallback(
@@ -495,6 +507,8 @@ export function CanvasPage({
               stageRef={stageRef}
               editingTextId={textEditor?.shape.id ?? null}
               onDrawingEnd={handleDrawingEnd}
+              onPinchStart={handlePinchStart}
+              onPinchEnd={handlePinchEnd}
             />
 
             {tool === "text" && !textEditor && (
