@@ -4,6 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import type { DashboardStats } from "@/db/queries/stats";
+import { useSignedIn } from "@/hooks/useData";
+import {
+  localGetCanvases,
+  localGetDeadlines,
+  localGetMissions,
+  localGetPosts,
+} from "@/lib/local-storage-db";
 
 const emptyStats: DashboardStats = {
   fetchedAt: 0,
@@ -37,11 +44,70 @@ function countdownFor(dueDate: Date): string {
     : `T-${String(hours).padStart(2, "0")}H`;
 }
 
+function getLocalDashboardStats(): DashboardStats {
+  const missions = localGetMissions();
+  const posts = localGetPosts();
+  const activeDeadlines = localGetDeadlines().filter((d) => d.status === "ACTIVE");
+  const canvases = localGetCanvases();
+  const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const topMission =
+    missions.find((m) => m.status === "DOING") ??
+    missions.find((m) => m.status === "PLANNED") ??
+    null;
+  const upcomingDeadline = activeDeadlines[0] ?? null;
+  const recentCanvas = canvases[0] ?? null;
+
+  return {
+    fetchedAt: Date.now(),
+    missions: {
+      planned: missions.filter((m) => m.status === "PLANNED").length,
+      doing: missions.filter((m) => m.status === "DOING").length,
+      done: missions.filter((m) => m.status === "DONE").length,
+    },
+    weeklyPulse: {
+      completedThisCycle: missions.filter(
+        (m) => m.status === "DONE" && new Date(m.updatedAt).getTime() >= oneWeekAgo,
+      ).length,
+      streakDays: 0,
+    },
+    upcomingDeadline: upcomingDeadline
+      ? {
+          id: upcomingDeadline.id,
+          title: upcomingDeadline.title,
+          dueDate: new Date(upcomingDeadline.dueDate),
+          priority: upcomingDeadline.priority,
+        }
+      : null,
+    postLab: {
+      experiments: posts.filter((p) => p.status === "IDEA").length,
+      hypotheses: posts.filter((p) => p.status === "DRAFTING").length,
+      validated: posts.filter((p) => p.status === "READY").length,
+      archived: posts.filter((p) => p.status === "POSTED").length,
+    },
+    recentCanvas: recentCanvas
+      ? {
+          id: recentCanvas.id,
+          title: recentCanvas.title,
+          updatedAt: new Date(recentCanvas.updatedAt),
+          thumbnail: recentCanvas.thumbnail,
+        }
+      : null,
+    todaysFocus: topMission
+      ? {
+          title: topMission.title,
+          status: topMission.status,
+          priority: topMission.priority,
+        }
+      : null,
+  };
+}
+
 export function DashboardStatsClient({
   databaseAvailable,
 }: {
   databaseAvailable: boolean;
 }) {
+  const isSignedIn = useSignedIn();
   const [stats, setStats] = useState<DashboardStats>(() => {
     try {
       const raw = sessionStorage.getItem(CACHE_KEY);
@@ -49,14 +115,18 @@ export function DashboardStatsClient({
     } catch {}
     return emptyStats;
   });
-  const [loaded, setLoaded] = useState(false);
   const fetching = useRef(false);
 
   const fetchStats = useCallback(async () => {
+    if (!isSignedIn) {
+      setStats(getLocalDashboardStats());
+      return;
+    }
     if (fetching.current || !databaseAvailable) return;
     fetching.current = true;
     try {
       const res = await fetch("/api/dashboard/stats");
+      if (!res.ok) throw new Error("Fetch failed");
       const data: DashboardStats = parseStats(await res.json());
       setStats(data);
       try {
@@ -66,15 +136,14 @@ export function DashboardStatsClient({
       // keep current stats
     } finally {
       fetching.current = false;
-      setLoaded(true);
     }
-  }, []);
+  }, [databaseAvailable, isSignedIn]);
 
   useEffect(() => {
-    fetchStats();
+    void Promise.resolve().then(fetchStats);
   }, [fetchStats]);
 
-  const databaseUnavailable = !databaseAvailable;
+  const databaseUnavailable = isSignedIn && !databaseAvailable;
 
   const focusTitle = stats.todaysFocus?.title ?? "No active mission";
   const focusPriority = stats.todaysFocus?.priority ?? "UNSET";

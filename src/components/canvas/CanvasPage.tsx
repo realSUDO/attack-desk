@@ -31,6 +31,8 @@ import {
   type Tool,
   type ToolDefaults,
   DEFAULT_TOOL_DEFAULTS,
+  MIN_ZOOM,
+  MAX_ZOOM,
 } from "./types";
 
 type LinkedRef = {
@@ -111,7 +113,6 @@ export function CanvasPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   const saveSequenceRef = useRef(0);
-  const prevToolRef = useRef<Tool>("select");
 
   const selectedShapes = useMemo<ReadonlyArray<Shape>>(() => {
     const set = new Set(selectedIds);
@@ -176,16 +177,18 @@ export function CanvasPage({
     setTool("select");
   }, []);
 
-  const handlePinchStart = useCallback(() => {
-    prevToolRef.current = tool;
-    if (tool !== "pan" && tool !== "select") {
-      setTool("pan");
-    }
-  }, [tool]);
-
-  const handlePinchEnd = useCallback(() => {
-    setTool(prevToolRef.current);
-  }, []);
+  const handleZoomChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newZoom = MIN_ZOOM + (MAX_ZOOM - MIN_ZOOM) * (Number(e.target.value) / 100);
+    const stage = stageRef.current;
+    const container = containerRef.current;
+    if (!stage || !container) return;
+    const cx = container.clientWidth / 2;
+    const cy = container.clientHeight / 2;
+    const oldZoom = stage.scaleX();
+    const worldX = (cx - stage.x()) / oldZoom;
+    const worldY = (cy - stage.y()) / oldZoom;
+    api.setCamera({ x: cx - worldX * newZoom, y: cy - worldY * newZoom, zoom: newZoom });
+  }, [api]);
 
   const handleRequestTextEdit = useCallback(
     (shape: TextEditorShape, isNew = false) => {
@@ -444,10 +447,14 @@ export function CanvasPage({
         startDelete(async () => {
           await unlinkMissionFromCanvasAction(canvasId, missionId);
         });
+      } else {
+        import("@/lib/local-storage-db").then(({ localLinkMissionToCanvas }) => {
+          localLinkMissionToCanvas(missionId, null);
+          router.refresh();
+        });
       }
-      // Anonymous: nothing to unlink since localStorage has no link concept
     },
-    [canvasId, userId],
+    [canvasId, router, userId],
   );
 
   const handleShowContextMenu = useCallback(
@@ -507,9 +514,23 @@ export function CanvasPage({
               stageRef={stageRef}
               editingTextId={textEditor?.shape.id ?? null}
               onDrawingEnd={handleDrawingEnd}
-              onPinchStart={handlePinchStart}
-              onPinchEnd={handlePinchEnd}
             />
+
+            {/* Zoom slider */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex items-center justify-center">
+              <div className="border-outline-variant bg-surface-container pointer-events-auto flex items-center gap-2 rounded-full border px-3 py-1.5 shadow-sm">
+                <span className="text-on-surface-variant font-metadata text-metadata">−</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={Math.round(((api.scene.camera.zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100)}
+                  onChange={handleZoomChange}
+                  className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-outline accent-primary [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
+                />
+                <span className="text-on-surface-variant font-metadata text-metadata">+</span>
+              </div>
+            </div>
 
             {tool === "text" && !textEditor && (
               <div

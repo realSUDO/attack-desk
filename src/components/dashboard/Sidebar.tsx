@@ -118,7 +118,13 @@ export function Sidebar() {
             </div>
             <button
               type="button"
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={() => {
+                const keys = ["ad:board:data", "ad:postlab:data", "ad:weekly-reviews:data", "ad:canvases:data", "ad:dashboard:stats"];
+                for (const key of keys) {
+                  try { sessionStorage.removeItem(key); } catch {}
+                }
+                void signOut({ callbackUrl: "/" });
+              }}
               className="text-on-surface-variant hover:text-on-surface text-[9px] transition-colors"
             >
               Sign out

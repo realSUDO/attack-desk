@@ -23,7 +23,7 @@ function now(): string {
   return new Date().toISOString();
 }
 
-type Mission = {
+export type LocalMission = {
   id: string;
   title: string;
   description: string | null;
@@ -38,7 +38,7 @@ type Mission = {
   updatedAt: string;
 };
 
-type Deadline = {
+export type LocalDeadline = {
   id: string;
   title: string;
   description: string | null;
@@ -51,7 +51,7 @@ type Deadline = {
   updatedAt: string;
 };
 
-type PostIdea = {
+export type LocalPostIdea = {
   id: string;
   title: string;
   hook: string | null;
@@ -66,7 +66,7 @@ type PostIdea = {
   updatedAt: string;
 };
 
-type Canvas = {
+export type LocalCanvas = {
   id: string;
   title: string;
   description: string | null;
@@ -77,7 +77,7 @@ type Canvas = {
   updatedAt: string;
 };
 
-type WeeklyReview = {
+export type LocalWeeklyReview = {
   id: string;
   weekStart: string;
   weekEnd: string;
@@ -92,16 +92,16 @@ type WeeklyReview = {
 // ── Missions ──
 
 export function localGetMissions() {
-  return read<Mission[]>("missions", []).sort(
+  return read<LocalMission[]>("missions", []).sort(
     (a, b) => a.order - b.order,
   );
 }
 
 export function localCreateMission(
-  data: Omit<Mission, "id" | "createdAt" | "updatedAt">,
-): Mission {
+  data: Omit<LocalMission, "id" | "createdAt" | "updatedAt">,
+): LocalMission {
   const missions = localGetMissions();
-  const mission: Mission = {
+  const mission: LocalMission = {
     ...data,
     id: generateId(),
     createdAt: now(),
@@ -112,13 +112,17 @@ export function localCreateMission(
   return mission;
 }
 
-export function localUpdateMission(id: string, data: Partial<Mission>) {
+export function localUpdateMission(id: string, data: Partial<LocalMission>) {
   const missions = localGetMissions();
   const idx = missions.findIndex((m) => m.id === id);
   if (idx === -1) return null;
   missions[idx] = { ...missions[idx]!, ...data, updatedAt: now() };
   write("missions", missions);
   return missions[idx];
+}
+
+export function localLinkMissionToCanvas(missionId: string, canvasId: string | null) {
+  return localUpdateMission(missionId, { canvasId });
 }
 
 export function localDeleteMission(id: string) {
@@ -129,16 +133,16 @@ export function localDeleteMission(id: string) {
 // ── Deadlines ──
 
 export function localGetDeadlines() {
-  return read<Deadline[]>("deadlines", []).sort(
+  return read<LocalDeadline[]>("deadlines", []).sort(
     (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
   );
 }
 
 export function localCreateDeadline(
-  data: Omit<Deadline, "id" | "createdAt" | "updatedAt">,
-): Deadline {
+  data: Omit<LocalDeadline, "id" | "createdAt" | "updatedAt">,
+): LocalDeadline {
   const deadlines = localGetDeadlines();
-  const deadline: Deadline = {
+  const deadline: LocalDeadline = {
     ...data,
     id: generateId(),
     createdAt: now(),
@@ -149,7 +153,7 @@ export function localCreateDeadline(
   return deadline;
 }
 
-export function localUpdateDeadline(id: string, data: Partial<Deadline>) {
+export function localUpdateDeadline(id: string, data: Partial<LocalDeadline>) {
   const deadlines = localGetDeadlines();
   const idx = deadlines.findIndex((d) => d.id === id);
   if (idx === -1) return null;
@@ -166,16 +170,16 @@ export function localDeleteDeadline(id: string) {
 // ── Post Ideas ──
 
 export function localGetPosts() {
-  return read<PostIdea[]>("posts", []).sort(
+  return read<LocalPostIdea[]>("posts", []).sort(
     (a, b) => a.order - b.order,
   );
 }
 
 export function localCreatePost(
-  data: Omit<PostIdea, "id" | "createdAt" | "updatedAt">,
-): PostIdea {
+  data: Omit<LocalPostIdea, "id" | "createdAt" | "updatedAt">,
+): LocalPostIdea {
   const posts = localGetPosts();
-  const post: PostIdea = {
+  const post: LocalPostIdea = {
     ...data,
     id: generateId(),
     createdAt: now(),
@@ -186,7 +190,7 @@ export function localCreatePost(
   return post;
 }
 
-export function localUpdatePost(id: string, data: Partial<PostIdea>) {
+export function localUpdatePost(id: string, data: Partial<LocalPostIdea>) {
   const posts = localGetPosts();
   const idx = posts.findIndex((p) => p.id === id);
   if (idx === -1) return null;
@@ -205,25 +209,25 @@ export function localDeletePost(id: string) {
 export const LOCAL_CANVAS_ID = "anonymous-canvas";
 
 export function hasLocalCanvas(): boolean {
-  return read<Canvas[]>("canvases", []).length > 0;
+  return read<LocalCanvas[]>("canvases", []).length > 0;
 }
 
 export function localGetCanvases() {
-  return read<Canvas[]>("canvases", []).sort(
+  return read<LocalCanvas[]>("canvases", []).sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
 }
 
 export function localGetCanvasById(id: string) {
-  return read<Canvas[]>("canvases", []).find((c) => c.id === id) ?? null;
+  return read<LocalCanvas[]>("canvases", []).find((c) => c.id === id) ?? null;
 }
 
 export function localCreateCanvas(
-  data: Omit<Canvas, "id" | "createdAt" | "updatedAt">,
-): Canvas | null {
+  data: Omit<LocalCanvas, "id" | "createdAt" | "updatedAt">,
+): LocalCanvas | null {
   const canvases = localGetCanvases();
   if (canvases.length >= 1) return null;
-  const canvas: Canvas = {
+  const canvas: LocalCanvas = {
     ...data,
     id: LOCAL_CANVAS_ID,
     createdAt: now(),
@@ -234,7 +238,7 @@ export function localCreateCanvas(
   return canvas;
 }
 
-export function localUpdateCanvas(id: string, data: Partial<Canvas>) {
+export function localUpdateCanvas(id: string, data: Partial<LocalCanvas>) {
   const canvases = localGetCanvases();
   const idx = canvases.findIndex((c) => c.id === id);
   if (idx === -1) return null;
@@ -251,16 +255,16 @@ export function localDeleteCanvas(id: string) {
 // ── Weekly Reviews ──
 
 export function localGetWeeklyReviews() {
-  return read<WeeklyReview[]>("reviews", []).sort(
+  return read<LocalWeeklyReview[]>("reviews", []).sort(
     (a, b) => new Date(b.weekStart).getTime() - new Date(a.weekStart).getTime(),
   );
 }
 
 export function localCreateWeeklyReview(
-  data: Omit<WeeklyReview, "id" | "createdAt" | "updatedAt">,
-): WeeklyReview {
+  data: Omit<LocalWeeklyReview, "id" | "createdAt" | "updatedAt">,
+): LocalWeeklyReview {
   const reviews = localGetWeeklyReviews();
-  const review: WeeklyReview = {
+  const review: LocalWeeklyReview = {
     ...data,
     id: generateId(),
     createdAt: now(),
@@ -273,7 +277,7 @@ export function localCreateWeeklyReview(
 
 export function localUpdateWeeklyReview(
   id: string,
-  data: Partial<WeeklyReview>,
+  data: Partial<LocalWeeklyReview>,
 ) {
   const reviews = localGetWeeklyReviews();
   const idx = reviews.findIndex((r) => r.id === id);

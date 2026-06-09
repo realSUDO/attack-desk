@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import { apiRequest } from "@/lib/client-api";
+import {
+  localCreateWeeklyReview,
+  localDeleteWeeklyReview,
+  localGetWeeklyReviews,
+  localUpdateWeeklyReview,
+  type LocalWeeklyReview,
+} from "@/lib/local-storage-db";
+import { useSignedIn } from "@/hooks/useData";
 
 export type ReviewItem = {
   id: string;
@@ -39,10 +47,23 @@ function normalize(review: ReviewItem): ReviewItem {
   };
 }
 
+function localReviewToItem(review: LocalWeeklyReview): ReviewItem {
+  return {
+    id: review.id,
+    weekStart: new Date(review.weekStart),
+    weekEnd: new Date(review.weekEnd),
+    wentRight: review.wentRight,
+    wentWrong: review.wentWrong,
+    nextPlan: review.nextPlan,
+    finalNote: review.finalNote,
+  };
+}
+
 export function WeeklyReviewClient({
   databaseAvailable,
 }: Props) {
   const router = useRouter();
+  const isSignedIn = useSignedIn();
   const [reviews, setReviews] = useState<ReviewItem[]>(() => {
     try {
       const raw = sessionStorage.getItem(CACHE_KEY);
@@ -59,10 +80,15 @@ export function WeeklyReviewClient({
   const fetching = useRef(false);
 
   const fetchData = useCallback(async () => {
+    if (!isSignedIn) {
+      setReviews(localGetWeeklyReviews().map(localReviewToItem));
+      return;
+    }
     if (fetching.current || !databaseAvailable) return;
     fetching.current = true;
     try {
       const res = await fetch("/api/weekly-reviews-list/data");
+      if (!res.ok) throw new Error("Fetch failed");
       const data = await res.json();
       const items = data.map(normalize);
       setReviews(items);
@@ -74,10 +100,10 @@ export function WeeklyReviewClient({
     } finally {
       fetching.current = false;
     }
-  }, []);
+  }, [databaseAvailable, isSignedIn]);
 
   useEffect(() => {
-    fetchData();
+    void Promise.resolve().then(fetchData);
   }, [fetchData]);
   const selected =
     selectedId === "new"
@@ -94,26 +120,40 @@ export function WeeklyReviewClient({
         weekEnd: new Date(`${input.weekEnd}T23:59:59`).toISOString(),
       };
       if (selectedId === "new") {
-        const created = normalize(
-          await apiRequest<ReviewItem>("/api/weekly-reviews", {
-            method: "POST",
-            body: JSON.stringify(payload),
-          }),
-        );
+        let created: ReviewItem;
+        if (!isSignedIn) {
+          created = localReviewToItem(localCreateWeeklyReview(payload));
+        } else {
+          created = normalize(
+            await apiRequest<ReviewItem>("/api/weekly-reviews", {
+              method: "POST",
+              body: JSON.stringify(payload),
+            }),
+          );
+        }
         setReviews((current) => [created, ...current]);
-      } else if (selected) {
-        const updated = normalize(
-          await apiRequest<ReviewItem>(`/api/weekly-reviews/${selected.id}`, {
-            method: "PATCH",
-            body: JSON.stringify(payload),
-          }),
-        );
+      } else if (selectedId && selectedId !== "new") {
+        const targetId = selectedId;
+        // No easy optimistic update here without complexity, just wait for result
+        let updated: ReviewItem;
+        if (isSignedIn) {
+          updated = normalize(
+            await apiRequest<ReviewItem>(`/api/weekly-reviews/${targetId}`, {
+              method: "PATCH",
+              body: JSON.stringify(payload),
+            }),
+          );
+        } else {
+          const updatedLocal = localUpdateWeeklyReview(targetId, payload);
+          if (!updatedLocal) throw new Error("Review no longer exists");
+          updated = localReviewToItem(updatedLocal);
+        }
         setReviews((current) =>
-          current.map((review) => review.id === updated.id ? updated : review),
+          current.map((review) => review.id === targetId ? updated : review),
         );
       }
       setSelectedId(null);
-      router.refresh();
+      if (isSignedIn) router.refresh();
     } catch (requestError) {
       setError(
         requestError instanceof Error ? requestError.message : "Unable to save review",
@@ -124,15 +164,21 @@ export function WeeklyReviewClient({
   };
 
   const remove = async () => {
-    if (!selected || !window.confirm("Delete this weekly review?")) return;
+    const target = selected;
+    if (!target || !window.confirm("Delete this weekly review?")) return;
     setIsSaving(true);
+    setError(null);
     try {
-      await apiRequest<ReviewItem>(`/api/weekly-reviews/${selected.id}`, {
-        method: "DELETE",
-      });
-      setReviews((current) => current.filter((review) => review.id !== selected.id));
+      if (isSignedIn) {
+        await apiRequest<ReviewItem>(`/api/weekly-reviews/${target.id}`, {
+          method: "DELETE",
+        });
+      } else {
+        localDeleteWeeklyReview(target.id);
+      }
+      setReviews((current) => current.filter((review) => review.id !== target.id));
       setSelectedId(null);
-      router.refresh();
+      if (isSignedIn) router.refresh();
     } catch (requestError) {
       setError(
         requestError instanceof Error ? requestError.message : "Unable to delete review",

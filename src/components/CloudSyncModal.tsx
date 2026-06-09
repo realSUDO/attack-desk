@@ -8,6 +8,16 @@ import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 
 type Phase = "confirm" | "syncing" | "done" | "error";
 
+async function postLocalRecord(path: string, body: unknown) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`Sync failed for ${path}`);
+  return (await response.json()) as { data?: { id?: string } };
+}
+
 export function CloudSyncModal() {
   const { status } = useSession();
   const router = useRouter();
@@ -47,57 +57,66 @@ export function CloudSyncModal() {
         "@/lib/local-storage-db"
       );
       const local = getAllLocalData();
+      const canvasIdMap = new Map<string, string>();
 
       for (const canvas of local.canvases) {
-        const res = await fetch("/api/canvases", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: canvas.title,
-            description: canvas.description,
-            data: canvas.data,
-          }),
+        const data = await postLocalRecord("/api/canvases", {
+          title: canvas.title,
+          description: canvas.description,
+          data: canvas.data,
         });
-        const data = await res.json();
-        const newCanvasId = data.data?.id;
+        if (data.data?.id) canvasIdMap.set(canvas.id, data.data.id);
+      }
 
-        for (const mission of local.missions) {
-          await fetch("/api/missions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...mission,
-              canvasId: newCanvasId ?? mission.canvasId,
-            }),
-          });
-        }
+      for (const mission of local.missions) {
+        await postLocalRecord("/api/missions", {
+          title: mission.title,
+          description: mission.description,
+          status: mission.status,
+          priority: mission.priority,
+          category: mission.category,
+          dueDate: mission.dueDate,
+          order: mission.order,
+          deadlineId: mission.deadlineId,
+          canvasId: mission.canvasId ? (canvasIdMap.get(mission.canvasId) ?? null) : null,
+        });
+      }
 
-        for (const deadline of local.deadlines) {
-          await fetch("/api/deadlines", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(deadline),
-          });
-        }
+      for (const deadline of local.deadlines) {
+        await postLocalRecord("/api/deadlines", {
+          title: deadline.title,
+          description: deadline.description,
+          dueDate: deadline.dueDate,
+          category: deadline.category,
+          status: deadline.status,
+          priority: deadline.priority,
+          link: deadline.link,
+        });
+      }
 
-        for (const post of local.posts) {
-          await fetch("/api/posts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...post,
-              canvasId: newCanvasId ?? post.canvasId,
-            }),
-          });
-        }
+      for (const post of local.posts) {
+        await postLocalRecord("/api/posts", {
+          title: post.title,
+          hook: post.hook,
+          draft: post.draft,
+          finalContent: post.finalContent,
+          category: post.category,
+          status: post.status,
+          postedUrl: post.postedUrl,
+          order: post.order,
+          canvasId: post.canvasId ? (canvasIdMap.get(post.canvasId) ?? null) : null,
+        });
+      }
 
-        for (const review of local.reviews) {
-          await fetch("/api/weekly-reviews", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(review),
-          });
-        }
+      for (const review of local.reviews) {
+        await postLocalRecord("/api/weekly-reviews", {
+          weekStart: review.weekStart,
+          weekEnd: review.weekEnd,
+          wentRight: review.wentRight,
+          wentWrong: review.wentWrong,
+          nextPlan: review.nextPlan,
+          finalNote: review.finalNote,
+        });
       }
 
       clearAllLocalData();

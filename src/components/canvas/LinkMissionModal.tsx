@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import { linkMissionToCanvasAction } from "@/actions/canvas.actions";
+import { localLinkMissionToCanvas } from "@/lib/local-storage-db";
+import { useSignedIn } from "@/hooks/useData";
 
 type Mission = {
   id: string;
@@ -22,6 +24,7 @@ type Props = {
 
 export function LinkMissionModal({ canvasId, open, onClose, missions }: Props) {
   const router = useRouter();
+  const isSignedIn = useSignedIn();
   const [query, setQuery] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,14 +59,27 @@ export function LinkMissionModal({ canvasId, open, onClose, missions }: Props) {
   const handleLink = async (missionId: string) => {
     setPendingId(missionId);
     setError(null);
-    const result = await linkMissionToCanvasAction(canvasId, missionId);
-    setPendingId(null);
-    if (!result.success) {
-      setError(result.message);
-      return;
+    try {
+      if (isSignedIn) {
+        const result = await linkMissionToCanvasAction(canvasId, missionId);
+        if (!result.success) {
+          setError(result.message);
+          return;
+        }
+      } else {
+        const success = localLinkMissionToCanvas(missionId, canvasId);
+        if (!success) {
+          setError("Failed to link mission locally");
+          return;
+        }
+      }
+      onClose();
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred");
+    } finally {
+      setPendingId(null);
     }
-    onClose();
-    router.refresh();
   };
 
   return (

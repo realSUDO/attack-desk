@@ -64,8 +64,6 @@ type Props = {
   stageRef: RefObject<Konva.Stage | null>;
   editingTextId: string | null;
   onDrawingEnd?: () => void;
-  onPinchStart?: () => void;
-  onPinchEnd?: () => void;
 };
 
 const GRID_SIZE = 24;
@@ -118,8 +116,6 @@ export function KonvaCanvas({
   stageRef,
   editingTextId,
   onDrawingEnd,
-  onPinchStart,
-  onPinchEnd,
 }: Props) {
   const { scene } = api;
   const setCamera = api.setCamera;
@@ -920,80 +916,6 @@ export function KonvaCanvas({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stageRef, selectedIds, shapeIds, tool, getWorldPoint, setCamera, setSelectedIds, onContextMenuEvent, containerRef]);
-
-  // Pinch-zoom on mobile — requires touch-action: none on container
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    let initialDist = 0;
-    let initialZoom = 1;
-    let midX = 0;
-    let midY = 0;
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        onPinchStart?.();
-        const stage = stageRef.current;
-        if (!stage) return;
-        const t1 = e.touches[0]!;
-        const t2 = e.touches[1]!;
-        initialDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-        initialZoom = stage.scaleX();
-        midX = (t1.clientX + t2.clientX) / 2;
-        midY = (t1.clientY + t2.clientY) / 2;
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        const stage = stageRef.current;
-        if (!stage || initialDist === 0) return;
-        const t1 = e.touches[0]!;
-        const t2 = e.touches[1]!;
-        const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, initialZoom * (dist / initialDist)));
-
-        const worldUnderPointer = {
-          x: (midX - stage.x()) / initialZoom,
-          y: (midY - stage.y()) / initialZoom,
-        };
-
-        stage.position({
-          x: midX - worldUnderPointer.x * newZoom,
-          y: midY - worldUnderPointer.y * newZoom,
-        });
-        stage.scale({ x: newZoom, y: newZoom });
-        stage.batchDraw();
-
-        const c = container;
-        c.style.backgroundSize = `${GRID_SIZE * newZoom}px ${GRID_SIZE * newZoom}px`;
-        c.style.backgroundPosition = `${stage.x()}px ${stage.y()}px`;
-      }
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2 && initialDist > 0) {
-        onPinchEnd?.();
-        const stage = stageRef.current;
-        if (stage) {
-          setCamera({ x: stage.x(), y: stage.y(), zoom: stage.scaleX() });
-        }
-        initialDist = 0;
-      }
-    };
-
-    container.addEventListener("touchstart", onTouchStart, { passive: false });
-    container.addEventListener("touchmove", onTouchMove, { passive: false });
-    container.addEventListener("touchend", onTouchEnd);
-    return () => {
-      container.removeEventListener("touchstart", onTouchStart);
-      container.removeEventListener("touchmove", onTouchMove);
-      container.removeEventListener("touchend", onTouchEnd);
-    };
-  }, [containerRef, stageRef, setCamera, onPinchStart, onPinchEnd]);
 
   const onShapeDblClick = useCallback(
     (shape: Shape, e: KonvaEventObject<MouseEvent>) => {

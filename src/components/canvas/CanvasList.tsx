@@ -7,6 +7,14 @@ import { useSession } from "next-auth/react";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import { createCanvasAction } from "@/actions/canvas.actions";
+import {
+  localCreateCanvas,
+  localDeleteCanvas,
+  localGetCanvases,
+  localGetMissions,
+  localGetPosts,
+  type LocalCanvas,
+} from "@/lib/local-storage-db";
 
 type CanvasItem = {
   id: string;
@@ -24,7 +32,7 @@ type Props = {
 const CACHE_KEY = "ad:canvases:data";
 
 export function CanvasList({ databaseAvailable }: Props) {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const isSignedIn = status === "authenticated";
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -68,25 +76,28 @@ export function CanvasList({ databaseAvailable }: Props) {
     } finally {
       fetching.current = false;
     }
-  }, []);
+  }, [databaseAvailable]);
 
   useEffect(() => {
-    if (isSignedIn) {
-      fetchData();
-    } else {
-      const { localGetCanvases } = require("@/lib/local-storage-db");
+    void Promise.resolve().then(() => {
+      if (isSignedIn) {
+        void fetchData();
+        return;
+      }
       const local = localGetCanvases();
+      const localMissions = localGetMissions();
+      const localPosts = localGetPosts();
       setCanvases(
-        local.map((c: { id: string; title: string; description: string | null; updatedAt: string }) => ({
+        local.map((c: LocalCanvas) => ({
           id: c.id,
           title: c.title,
           description: c.description,
           updatedAt: new Date(c.updatedAt),
-          missionCount: 0,
-          postIdeaCount: 0,
+          missionCount: localMissions.filter((m) => m.canvasId === c.id).length,
+          postIdeaCount: localPosts.filter((p) => p.canvasId === c.id).length,
         })),
       );
-    }
+    });
   }, [isSignedIn, fetchData]);
 
   const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
@@ -94,7 +105,6 @@ export function CanvasList({ databaseAvailable }: Props) {
     if (!window.confirm("Delete this canvas? This cannot be undone.")) return;
     setDeletingId(id);
     if (!isSignedIn) {
-      const { localDeleteCanvas } = require("@/lib/local-storage-db");
       localDeleteCanvas(id);
       setCanvases((prev) => prev.filter((c) => c.id !== id));
       setDeletingId(null);
@@ -113,7 +123,6 @@ export function CanvasList({ databaseAvailable }: Props) {
   const handleCreate = () => {
     if (!title.trim()) return;
     if (!isSignedIn) {
-      const { localCreateCanvas } = require("@/lib/local-storage-db");
       const canvas = localCreateCanvas({
         title: title.trim(),
         description: null,

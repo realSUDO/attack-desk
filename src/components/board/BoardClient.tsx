@@ -22,6 +22,17 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import { apiRequest } from "@/lib/client-api";
+import {
+  localCreateMission,
+  localDeleteMission,
+  localGetDeadlines,
+  localGetMissions,
+  localGetCanvases,
+  localUpdateMission,
+  type LocalMission,
+  type LocalDeadline,
+} from "@/lib/local-storage-db";
+import { useSignedIn } from "@/hooks/useData";
 
 import { BoardHeader } from "./BoardHeader";
 import { DeadlineRadar, type RadarDeadline } from "./DeadlineRadar";
@@ -38,6 +49,27 @@ const STATUSES = ["PLANNED", "DOING", "DONE"] as const;
 
 function normalizeMission(m: BoardMission): BoardMission {
   return { ...m, dueDate: m.dueDate ? new Date(m.dueDate) : null };
+}
+
+function localMissionToBoard(m: LocalMission): BoardMission {
+  return {
+    id: m.id,
+    title: m.title,
+    description: m.description,
+    status: m.status as BoardMission["status"],
+    priority: m.priority as BoardMission["priority"],
+    dueDate: m.dueDate ? new Date(m.dueDate) : null,
+    category: m.category,
+  };
+}
+
+function localDeadlineToRadar(d: LocalDeadline): RadarDeadline {
+  return {
+    id: d.id,
+    title: d.title,
+    dueDate: new Date(d.dueDate),
+    priority: d.priority as RadarDeadline["priority"],
+  };
 }
 
 const SortableCard = memo(function SortableCard({
@@ -134,6 +166,7 @@ export function BoardClient({
   databaseAvailable,
 }: Props) {
   const router = useRouter();
+  const isSignedIn = useSignedIn();
   const [missions, setMissions] = useState<BoardMission[]>(() => {
     try {
       const raw = sessionStorage.getItem(CACHE_KEY);
@@ -167,10 +200,34 @@ export function BoardClient({
   const fetching = useRef(false);
 
   const fetchData = useCallback(async () => {
+    if (!isSignedIn) {
+      const localDeadlines = localGetDeadlines();
+      const localMissions = localGetMissions();
+      const localCanvases = localGetCanvases();
+
+      const deadlinesForRadar = localDeadlines.map(localDeadlineToRadar);
+      const missionsForBoard = localMissions.map((m) => {
+        const mission = localMissionToBoard(m);
+        if (m.deadlineId) {
+          const d = localDeadlines.find((dl) => dl.id === m.deadlineId);
+          if (d) mission.deadline = { id: d.id, title: d.title };
+        }
+        if (m.canvasId) {
+          const c = localCanvases.find((cv) => cv.id === m.canvasId);
+          if (c) mission.canvas = { id: c.id, title: c.title };
+        }
+        return mission;
+      });
+
+      setMissions(applyOrder(missionsForBoard));
+      setDeadlines(deadlinesForRadar);
+      return;
+    }
     if (fetching.current || !databaseAvailable) return;
     fetching.current = true;
     try {
       const res = await fetch("/api/board/data");
+      if (!res.ok) throw new Error("Fetch failed");
       const data = await res.json();
       const m = (data.missions ?? []).map(normalizeMission);
       const d = (data.deadlines ?? []).map((dl: RadarDeadline) => ({
@@ -187,10 +244,10 @@ export function BoardClient({
     } finally {
       fetching.current = false;
     }
-  }, []);
+  }, [databaseAvailable, isSignedIn]);
 
   useEffect(() => {
-    fetchData();
+    void Promise.resolve().then(fetchData);
   }, [fetchData]);
   // overStatus drives column highlight — keep as state but only set on actual column change
   const [overStatus, setOverStatus] = useState<BoardMission["status"] | null>(null);
@@ -212,20 +269,17 @@ export function BoardClient({
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
 
-  const getStatusForId = useCallback(
-    (id: string | number): BoardMission["status"] | null => {
-      if (STATUSES.includes(id as BoardMission["status"])) return id as BoardMission["status"];
-      return missions.find((m) => m.id === id)?.status ?? null;
-    },
-    [missions],
-  );
-
   const onDragStart = useCallback(({ active }: DragStartEvent) => {
-    const m = missions.find((m) => m.id === active.id);
-    if (!m) return;
-    setActiveMission(m);
-    dragOriginStatus.current = m.status;
-  }, [missions]);
+    // Find the mission in the CURRENT state at the moment drag starts
+    setMissions((prev) => {
+      const m = prev.find((item) => item.id === active.id);
+      if (m) {
+        setActiveMission(m);
+        dragOriginStatus.current = m.status;
+      }
+      return prev;
+    });
+  }, []);
 
   const onDragOver = useCallback(({ active, over }: DragOverEvent) => {
     if (!over) return;
@@ -234,33 +288,33 @@ export function BoardClient({
     if (overId === activeId) return;
 
     const overIsColumn = STATUSES.includes(overId as BoardMission["status"]);
-    const newStatus = overIsColumn
-      ? (overId as BoardMission["status"])
-      : (missions.find((m) => m.id === overId)?.status ?? null);
-
-    if (!newStatus) return;
 
     // Update column highlight only when column changes
-    if (newStatus !== overStatusRef.current) {
-      overStatusRef.current = newStatus;
-      setOverStatus(newStatus);
-    }
+    const newOverStatus = overIsColumn
+      ? (overId as BoardMission["status"])
+      : (over.data.current?.status as BoardMission["status"] ?? null);
 
-    const activeStatus = missions.find((m) => m.id === activeId)?.status;
-    if (!activeStatus) return;
+    if (newOverStatus && newOverStatus !== overStatusRef.current) {
+      overStatusRef.current = newOverStatus;
+      setOverStatus(newOverStatus);
+    }
 
     setMissions((prev) => {
       const fromIdx = prev.findIndex((m) => m.id === activeId);
       if (fromIdx === -1) return prev;
 
+      const activeItem = prev[fromIdx]!;
+      const newStatus = overIsColumn
+        ? (overId as BoardMission["status"])
+        : (prev.find((m) => m.id === overId)?.status ?? activeItem.status);
+
       const next = [...prev];
       // Update status on the dragged card
-      next[fromIdx] = { ...next[fromIdx]!, status: newStatus };
+      next[fromIdx] = { ...activeItem, status: newStatus };
 
-      // Find target index: if over a card, insert before/after it; if over a column, append to column
+      // Find target index
       let toIdx: number;
       if (overIsColumn) {
-        // Dropping on column background — find last card of that column
         const lastIdx = next.reduce((acc, m, i) => (m.status === newStatus ? i : acc), -1);
         toIdx = lastIdx === -1 ? next.length - 1 : lastIdx;
       } else {
@@ -268,52 +322,47 @@ export function BoardClient({
         if (toIdx === -1) return prev;
       }
 
-      if (fromIdx === toIdx) return prev;
+      if (fromIdx === toIdx && next[fromIdx]?.status === activeItem.status) return prev;
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved);
       return next;
     });
-  }, [missions]);
+  }, []);
 
   const onDragEnd = useCallback(({ active, over }: DragEndEvent) => {
-    const finalStatus = missions.find((m) => m.id === active.id)?.status;
     const originStatus = dragOriginStatus.current;
     setActiveMission(null);
     setOverStatus(null);
     overStatusRef.current = null;
     dragOriginStatus.current = null;
 
-    if (!finalStatus || !originStatus) return;
+    setMissions((prev) => {
+      const finalItem = prev.find((m) => m.id === active.id);
+      if (!finalItem || !originStatus) return prev;
 
-    // Same-column reorder: move card to position of 'over' card
-    if (finalStatus === originStatus && over && over.id !== active.id) {
-      setMissions((prev) => {
-        const ids = prev.map((m) => m.id);
-        const fromIdx = ids.indexOf(active.id as string);
-        const toIdx = ids.indexOf(over.id as string);
-        if (fromIdx === -1 || toIdx === -1) return prev;
-        const next = [...prev];
-        const [moved] = next.splice(fromIdx, 1);
-        next.splice(toIdx, 0, moved);
-        saveOrder(next);
-        return next;
-      });
-      return;
-    }
+      const finalStatus = finalItem.status;
 
-    // Cross-column: status already updated optimistically in onDragOver, just save order + persist
-    if (finalStatus !== originStatus) {
-      setMissions((prev) => { saveOrder(prev); return prev; });
-      void apiRequest<BoardMission>(`/api/missions/${active.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: finalStatus }),
-      }).catch(() => {
-        setMissions((prev) =>
-          prev.map((m) => (m.id === active.id ? { ...m, status: originStatus } : m)),
-        );
-      });
-    }
-  }, [missions]);
+      // Persist change
+      if (finalStatus !== originStatus) {
+        saveOrder(prev);
+        if (!isSignedIn) {
+          localUpdateMission(active.id as string, { status: finalStatus });
+        } else {
+          void apiRequest<BoardMission>(`/api/missions/${active.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ status: finalStatus }),
+          }).catch(() => {
+            // Rollback if needed (though optimistic UI usually just stays and lets user try again)
+            // For now, keep it simple.
+          });
+        }
+      } else if (over && over.id !== active.id) {
+        saveOrder(prev);
+      }
+
+      return prev;
+    });
+  }, [isSignedIn]);
 
   const closeDrawer = useCallback(() => {
     setSelectedId(null);
@@ -326,50 +375,81 @@ export function BoardClient({
     setError(null);
     try {
       if (createStatus) {
-        const created = normalizeMission(
-          await apiRequest<BoardMission>("/api/missions", { method: "POST", body: JSON.stringify(input) }),
-        );
+        let created: BoardMission;
+        if (!isSignedIn) {
+          const local = localCreateMission({
+            ...input,
+            order: 0, // Will be corrected by functional update if needed
+            deadlineId: null,
+            canvasId: null,
+          });
+          created = localMissionToBoard(local);
+        } else {
+          created = normalizeMission(
+            await apiRequest<BoardMission>("/api/missions", { method: "POST", body: JSON.stringify(input) }),
+          );
+        }
         setMissions((c) => [...c, created]);
       } else if (selected) {
-        const prev = selected;
-        setMissions((c) => c.map((m) => m.id === selected.id
-          ? { ...selected, ...input, dueDate: input.dueDate ? new Date(input.dueDate) : null }
+        const prevId = selected.id;
+        const prevItem = selected;
+
+        // Optimistic update
+        setMissions((c) => c.map((m) => m.id === prevId
+          ? { ...m, ...input, dueDate: input.dueDate ? new Date(input.dueDate) : null }
           : m));
+
         try {
-          const updated = normalizeMission(
-            await apiRequest<BoardMission>(`/api/missions/${selected.id}`, { method: "PATCH", body: JSON.stringify(input) }),
-          );
-          setMissions((c) => c.map((m) => m.id === selected.id ? updated : m));
+          let updated: BoardMission;
+          if (isSignedIn) {
+            updated = normalizeMission(
+              await apiRequest<BoardMission>(`/api/missions/${prevId}`, {
+                method: "PATCH",
+                body: JSON.stringify(input),
+              }),
+            );
+          } else {
+            const updatedLocal = localUpdateMission(prevId, input);
+            if (!updatedLocal) throw new Error("Mission no longer exists");
+            updated = localMissionToBoard(updatedLocal);
+          }
+          setMissions((c) => c.map((m) => m.id === prevId ? updated : m));
         } catch (e) {
-          setMissions((c) => c.map((m) => m.id === prev.id ? prev : m));
+          // Rollback
+          setMissions((c) => c.map((m) => m.id === prevId ? prevItem : m));
           throw e;
         }
       }
       closeDrawer();
-      router.refresh();
+      if (isSignedIn) router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to save mission");
     } finally {
       setIsSaving(false);
     }
-  }, [createStatus, selected, closeDrawer, router]);
+  }, [createStatus, isSignedIn, selected, closeDrawer, router]);
 
   const deleteMission = useCallback(async () => {
-    if (!selected || !window.confirm(`Delete "${selected.title}"?`)) return;
+    const target = selected;
+    if (!target || !window.confirm(`Delete "${target.title}"?`)) return;
     setIsSaving(true);
-    const prev = missions;
-    setMissions((c) => c.filter((m) => m.id !== selected.id));
+    setError(null);
+
     try {
-      await apiRequest<BoardMission>(`/api/missions/${selected.id}`, { method: "DELETE" });
+      if (isSignedIn) {
+        await apiRequest<BoardMission>(`/api/missions/${target.id}`, { method: "DELETE" });
+      } else {
+        localDeleteMission(target.id);
+      }
+      setMissions((c) => c.filter((m) => m.id !== target.id));
       closeDrawer();
-      router.refresh();
+      if (isSignedIn) router.refresh();
     } catch (e) {
-      setMissions(prev);
       setError(e instanceof Error ? e.message : "Unable to delete mission");
     } finally {
       setIsSaving(false);
     }
-  }, [selected, missions, closeDrawer, router]);
+  }, [selected, isSignedIn, closeDrawer, router]);
 
   // Stable per-column add handlers so DroppableColumn doesn't rerender from new fn refs
   const addHandlers = useMemo(

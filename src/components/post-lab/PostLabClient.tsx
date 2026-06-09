@@ -11,6 +11,14 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import { apiRequest } from "@/lib/client-api";
+import {
+  localCreatePost,
+  localDeletePost,
+  localGetPosts,
+  localUpdatePost,
+  type LocalPostIdea,
+} from "@/lib/local-storage-db";
+import { useSignedIn } from "@/hooks/useData";
 
 import { PostCard, POST_STATUSES, type BoardPost } from "./PostCard";
 import { PostDrawer, type PostInput } from "./PostDrawer";
@@ -23,6 +31,20 @@ const CACHE_KEY = "ad:postlab:data";
 
 function normalizePost(post: BoardPost): BoardPost {
   return { ...post, updatedAt: new Date(post.updatedAt) };
+}
+
+function localPostToBoard(post: LocalPostIdea): BoardPost {
+  return {
+    id: post.id,
+    title: post.title,
+    hook: post.hook,
+    draft: post.draft,
+    finalContent: post.finalContent,
+    category: post.category,
+    status: post.status as BoardPost["status"],
+    postedUrl: post.postedUrl,
+    updatedAt: new Date(post.updatedAt),
+  };
 }
 
 function SortablePostCard({ post, onSelect, accentColor }: { post: BoardPost; onSelect: (id: string) => void; accentColor: string }) {
@@ -49,6 +71,7 @@ function applyPostOrder(posts: BoardPost[]): BoardPost[] {
 
 export function PostLabClient({ databaseAvailable }: Props) {
   const router = useRouter();
+  const isSignedIn = useSignedIn();
   const scrollRef = useRef<HTMLElement>(null);
   const [posts, setPosts] = useState<BoardPost[]>(() => {
     try {
@@ -69,10 +92,15 @@ export function PostLabClient({ databaseAvailable }: Props) {
   const fetching = useRef(false);
 
   const fetchData = useCallback(async () => {
+    if (!isSignedIn) {
+      setPosts(applyPostOrder(localGetPosts().map(localPostToBoard)));
+      return;
+    }
     if (fetching.current || !databaseAvailable) return;
     fetching.current = true;
     try {
       const res = await fetch("/api/post-lab/data");
+      if (!res.ok) throw new Error("Fetch failed");
       const data = await res.json();
       const items = data.map(normalizePost);
       setPosts(applyPostOrder(items));
@@ -84,10 +112,10 @@ export function PostLabClient({ databaseAvailable }: Props) {
     } finally {
       fetching.current = false;
     }
-  }, []);
+  }, [databaseAvailable, isSignedIn]);
 
   useEffect(() => {
-    fetchData();
+    void Promise.resolve().then(fetchData);
   }, [fetchData]);
   const [overStatus, setOverStatus] = useState<BoardPost["status"] | null>(null);
   const overStatusRef = useRef<BoardPost["status"] | null>(null);
@@ -133,22 +161,45 @@ export function PostLabClient({ databaseAvailable }: Props) {
   }, []);
 
   const onDragStart = useCallback(({ active }: DragStartEvent) => {
-    const p = posts.find((p) => p.id === active.id);
-    if (p) { setActivePost(p); dragOriginStatus.current = p.status; }
-  }, [posts]);
+    setPosts((prev) => {
+      const p = prev.find((item) => item.id === active.id);
+      if (p) {
+        setActivePost(p);
+        dragOriginStatus.current = p.status;
+      }
+      return prev;
+    });
+  }, []);
 
   const onDragOver = useCallback(({ active, over }: DragOverEvent) => {
     if (!over || over.id === active.id) return;
     const overId = over.id as string;
-    const overIsColumn = POST_STATUSES.map((s) => s.status).includes(overId as BoardPost["status"]);
-    const newStatus = overIsColumn ? (overId as BoardPost["status"]) : (posts.find((p) => p.id === overId)?.status ?? null);
-    if (!newStatus) return;
-    if (newStatus !== overStatusRef.current) { overStatusRef.current = newStatus; setOverStatus(newStatus); }
+    const activeId = active.id as string;
+
+    const columnIds = POST_STATUSES.map((s) => s.status);
+    const overIsColumn = columnIds.includes(overId as BoardPost["status"]);
+
+    const newOverStatus = overIsColumn
+      ? (overId as BoardPost["status"])
+      : (over.data.current?.status as BoardPost["status"] ?? null);
+
+    if (newOverStatus && newOverStatus !== overStatusRef.current) {
+      overStatusRef.current = newOverStatus;
+      setOverStatus(newOverStatus);
+    }
+
     setPosts((prev) => {
-      const fromIdx = prev.findIndex((p) => p.id === active.id);
+      const fromIdx = prev.findIndex((p) => p.id === activeId);
       if (fromIdx === -1) return prev;
+
+      const activeItem = prev[fromIdx]!;
+      const newStatus = overIsColumn
+        ? (overId as BoardPost["status"])
+        : (prev.find((p) => p.id === overId)?.status ?? activeItem.status);
+
       const next = [...prev];
-      next[fromIdx] = { ...next[fromIdx]!, status: newStatus };
+      next[fromIdx] = { ...activeItem, status: newStatus };
+
       let toIdx: number;
       if (overIsColumn) {
         const lastIdx = next.reduce((acc, p, i) => (p.status === newStatus ? i : acc), -1);
@@ -157,52 +208,114 @@ export function PostLabClient({ databaseAvailable }: Props) {
         toIdx = next.findIndex((p) => p.id === overId);
         if (toIdx === -1) return prev;
       }
-      if (fromIdx === toIdx) return prev;
+
+      if (fromIdx === toIdx && next[fromIdx]?.status === activeItem.status) return prev;
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved);
       return next;
     });
-  }, [posts]);
+  }, []);
 
-  const onDragEnd = useCallback(({ active }: DragEndEvent) => {
-    const finalStatus = posts.find((p) => p.id === active.id)?.status;
+  const onDragEnd = useCallback(({ active, over }: DragEndEvent) => {
     const originStatus = dragOriginStatus.current;
-    setActivePost(null); setOverStatus(null); overStatusRef.current = null; dragOriginStatus.current = null;
-    // Always save order to localStorage
-    setPosts((prev) => { savePostOrder(prev); return prev; });
-    if (!finalStatus || !originStatus || finalStatus === originStatus) return;
-    void apiRequest<BoardPost>(`/api/posts/${active.id}`, {
-      method: "PATCH", body: JSON.stringify({ status: finalStatus }),
-    }).catch(() => setPosts((prev) => prev.map((p) => p.id === active.id ? { ...p, status: originStatus } : p)));
-  }, [posts]);
+    setActivePost(null);
+    setOverStatus(null);
+    overStatusRef.current = null;
+    dragOriginStatus.current = null;
+
+    setPosts((prev) => {
+      const finalItem = prev.find((p) => p.id === active.id);
+      if (!finalItem || !originStatus) return prev;
+
+      const finalStatus = finalItem.status;
+
+      if (finalStatus !== originStatus) {
+        savePostOrder(prev);
+        if (!isSignedIn) {
+          localUpdatePost(active.id as string, { status: finalStatus });
+        } else {
+          void apiRequest<BoardPost>(`/api/posts/${active.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ status: finalStatus }),
+          }).catch(() => {});
+        }
+      } else if (over && over.id !== active.id) {
+        savePostOrder(prev);
+      }
+      return prev;
+    });
+  }, [isSignedIn]);
 
   const closeDrawer = () => { setIsCreating(false); setSelectedId(null); setError(null); };
 
   const savePost = async (input: PostInput) => {
-    setIsSaving(true); setError(null);
+    setIsSaving(true);
+    setError(null);
     try {
       if (isCreating) {
-        const created = normalizePost(await apiRequest<BoardPost>("/api/posts", { method: "POST", body: JSON.stringify(input) }));
+        let created: BoardPost;
+        if (!isSignedIn) {
+          const local = localCreatePost({
+            ...input,
+            finalContent: null,
+            postedUrl: null,
+            order: 0,
+            canvasId: null,
+          });
+          created = localPostToBoard(local);
+        } else {
+          created = normalizePost(await apiRequest<BoardPost>("/api/posts", { method: "POST", body: JSON.stringify(input) }));
+        }
         setPosts((c) => [...c, created]);
       } else if (selected) {
-        const prev = selected;
-        setPosts((c) => c.map((p) => p.id === selected.id ? { ...selected, ...input, updatedAt: new Date() } : p));
+        const prevId = selected.id;
+        const prevItem = selected;
+
+        setPosts((c) => c.map((p) => p.id === prevId ? { ...p, ...input, updatedAt: new Date() } : p));
         try {
-          const updated = normalizePost(await apiRequest<BoardPost>(`/api/posts/${selected.id}`, { method: "PATCH", body: JSON.stringify(input) }));
-          setPosts((c) => c.map((p) => p.id === selected.id ? updated : p));
-        } catch (e) { setPosts((c) => c.map((p) => p.id === prev.id ? prev : p)); throw e; }
+          let updated: BoardPost;
+          if (isSignedIn) {
+            updated = normalizePost(await apiRequest<BoardPost>(`/api/posts/${prevId}`, { method: "PATCH", body: JSON.stringify(input) }));
+          } else {
+            const updatedLocal = localUpdatePost(prevId, input);
+            if (!updatedLocal) throw new Error("Post no longer exists");
+            updated = localPostToBoard(updatedLocal);
+          }
+          setPosts((c) => c.map((p) => p.id === prevId ? updated : p));
+        } catch (e) {
+          setPosts((c) => c.map((p) => p.id === prevId ? prevItem : p));
+          throw e;
+        }
       }
-      closeDrawer(); router.refresh();
-    } catch (e) { setError(e instanceof Error ? e.message : "Unable to save post"); } finally { setIsSaving(false); }
+      closeDrawer();
+      if (isSignedIn) router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to save post");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const deletePost = async () => {
-    if (!selected || !window.confirm(`Delete "${selected.title}"?`)) return;
-    const prev = posts;
-    setPosts((c) => c.filter((p) => p.id !== selected.id)); setIsSaving(true);
-    try { await apiRequest<BoardPost>(`/api/posts/${selected.id}`, { method: "DELETE" }); closeDrawer(); router.refresh(); }
-    catch (e) { setPosts(prev); setError(e instanceof Error ? e.message : "Unable to delete post"); }
-    finally { setIsSaving(false); }
+    const target = selected;
+    if (!target || !window.confirm(`Delete "${target.title}"?`)) return;
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      if (isSignedIn) {
+        await apiRequest<BoardPost>(`/api/posts/${target.id}`, { method: "DELETE" });
+      } else {
+        localDeletePost(target.id);
+      }
+      setPosts((c) => c.filter((p) => p.id !== target.id));
+      closeDrawer();
+      if (isSignedIn) router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to delete post");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
