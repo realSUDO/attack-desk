@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
@@ -41,6 +41,9 @@ export function BoardClient({
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(databaseError);
   const [isSaving, setIsSaving] = useState(false);
+  const [dragOverStatus, setDragOverStatus] = useState<BoardMission["status"] | null>(null);
+  const draggingId = useRef<string | null>(null);
+
   const selected = missions.find((mission) => mission.id === selectedId) ?? null;
 
   const filtered = useMemo(() => {
@@ -57,6 +60,24 @@ export function BoardClient({
     setSelectedId(null);
     setCreateStatus(null);
     setError(null);
+  };
+
+  const moveToStatus = (id: string, status: BoardMission["status"]) => {
+    const mission = missions.find((m) => m.id === id);
+    if (!mission || mission.status === status) return;
+    // Optimistic update
+    setMissions((current) =>
+      current.map((m) => (m.id === id ? { ...m, status } : m)),
+    );
+    // Persist in background, roll back on failure
+    void apiRequest<BoardMission>(`/api/missions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }).catch(() => {
+      setMissions((current) =>
+        current.map((m) => (m.id === id ? { ...m, status: mission.status } : m)),
+      );
+    });
   };
 
   const saveMission = async (input: MissionInput) => {
@@ -157,8 +178,29 @@ export function BoardClient({
               const columnMissions = filtered.filter(
                 (mission) => mission.status === status,
               );
+              const isOver = dragOverStatus === status;
               return (
-                <div key={status} className="flex w-80 flex-col gap-md">
+                <div
+                  key={status}
+                  className="flex w-80 flex-col gap-md"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setDragOverStatus(status);
+                  }}
+                  onDragLeave={(e) => {
+                    // Only clear if leaving the column entirely (not entering a child)
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setDragOverStatus(null);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverStatus(null);
+                    if (draggingId.current) moveToStatus(draggingId.current, status);
+                    draggingId.current = null;
+                  }}
+                >
                   <div className="border-outline-variant flex items-center justify-between border-b pb-sm">
                     <span className="mono-label font-label-md">
                       {status} ({String(columnMissions.length).padStart(2, "0")})
@@ -171,10 +213,14 @@ export function BoardClient({
                       <MaterialIcon name="add" size={18} />
                     </button>
                   </div>
-                  <div className="board-column flex flex-col gap-sm">
+                  <div
+                    className={`board-column flex flex-col gap-sm flex-1 rounded transition-colors duration-150 ${
+                      isOver ? "bg-surface-container-high ring-1 ring-primary ring-inset" : ""
+                    }`}
+                  >
                     {columnMissions.length === 0 ? (
-                      <div className="border-outline-variant flex h-24 items-center justify-center border border-dashed text-xs text-on-surface-variant">
-                        {search ? "No matching missions." : "No missions."}
+                      <div className={`border-outline-variant flex h-24 items-center justify-center border border-dashed text-xs text-on-surface-variant ${isOver ? "border-primary" : ""}`}>
+                        {search ? "No matching missions." : "Drop here"}
                       </div>
                     ) : (
                       columnMissions.map((mission) => (
@@ -182,6 +228,7 @@ export function BoardClient({
                           key={mission.id}
                           mission={mission}
                           onSelect={setSelectedId}
+                          onDragStart={(id) => { draggingId.current = id; }}
                         />
                       ))
                     )}

@@ -43,9 +43,10 @@ const dueDateLabel = (due: Date | null): string => {
 type Props = {
   mission: BoardMission;
   onSelect: (id: string) => void;
+  onDragStart: (id: string) => void;
 };
 
-export function MissionCard({ mission, onSelect }: Props) {
+export function MissionCard({ mission, onSelect, onDragStart }: Props) {
   const style = priorityStyles[mission.priority];
   const isDoing = mission.status === "DOING";
   const isDone = mission.status === "DONE";
@@ -56,6 +57,11 @@ export function MissionCard({ mission, onSelect }: Props) {
     <div
       role="button"
       tabIndex={0}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        onDragStart(mission.id);
+      }}
       onClick={() => onSelect(mission.id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -63,7 +69,7 @@ export function MissionCard({ mission, onSelect }: Props) {
           onSelect(mission.id);
         }
       }}
-      className={`mission-card bg-surface-container-low border border-outline-variant hover:border-primary p-md flex cursor-pointer flex-col gap-sm transition-all duration-200 ${
+      className={`mission-card bg-surface-container-low border border-outline-variant hover:border-primary p-md flex cursor-grab active:cursor-grabbing flex-col gap-sm transition-all duration-200 ${
         isDoing ? "border-l-primary border-l-4" : ""
       } ${isDone ? "opacity-60 grayscale" : ""}`}
     >
