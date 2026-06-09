@@ -168,6 +168,9 @@ export function KonvaCanvas({
     shapeId: string;
     point: { x: number; y: number };
   } | null>(null);
+  const dragGroupRef = useRef<{ startWx: number; startWy: number } | null>(null);
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
 
   const orderedShapes = useMemo(
     () => scene.shapes.slice().sort((a, b) => a.z - b.z),
@@ -299,8 +302,7 @@ export function KonvaCanvas({
     if (!live) return;
     api.updateShapeTransient(live.id, { points: live.points.slice() });
     livePenRef.current = null;
-    onDrawingEnd?.();
-  }, [api, onDrawingEnd]);
+  }, [api]);
 
   const beginRect = useCallback(
     (wx: number, wy: number) => {
@@ -504,10 +506,6 @@ export function KonvaCanvas({
       const shapeNode = findShapeNode(e.target, shapeIds);
       const additive = native.shiftKey;
 
-      if (isTransformerTarget(e.target)) {
-        return;
-      }
-
       // Clear any active marquee when switching tools or clicking.
       if (marqueeRef.current && tool !== "select") {
         marqueeRef.current = null;
@@ -530,6 +528,33 @@ export function KonvaCanvas({
           } else if (!selectedIds.includes(id)) {
             setSelectedIds([id], false);
           }
+        } else if (isTransformerTarget(e.target) || selectedIds.length > 0) {
+          // Click on transformer border or near selected shapes → group drag
+          const pad = 20 / scene.camera.zoom;
+          const nearSelected = selectedIds.some((sid) => {
+            const s = scene.shapes.find((sh) => sh.id === sid);
+            if (!s) return false;
+            const b = shapeBounds(s);
+            if (!b) return false;
+            return (
+              wp.x >= b.x - pad &&
+              wp.x <= b.x + b.width + pad &&
+              wp.y >= b.y - pad &&
+              wp.y <= b.y + b.height + pad
+            );
+          });
+          if (nearSelected || isTransformerTarget(e.target)) {
+            dragGroupRef.current = { startWx: wp.x, startWy: wp.y };
+            return;
+          }
+          // Start marquee on empty space.
+          marqueeRef.current = {
+            startX: wp.x,
+            startY: wp.y,
+            currentX: wp.x,
+            currentY: wp.y,
+          };
+          setSelectedIds([], false);
         } else {
           // Start marquee on empty space.
           marqueeRef.current = {
@@ -611,6 +636,25 @@ export function KonvaCanvas({
       return;
     }
 
+    if (dragGroupRef.current) {
+      const ids = selectedIdsRef.current;
+      const dx = wp.x - dragGroupRef.current.startWx;
+      const dy = wp.y - dragGroupRef.current.startWy;
+      if (Math.hypot(dx, dy) > 0) {
+        dragGroupRef.current.startWx = wp.x;
+        dragGroupRef.current.startWy = wp.y;
+        for (const id of ids) {
+          const node = nodeRefs.current.get(id);
+          if (node) {
+            node.x(node.x() + dx);
+            node.y(node.y() + dy);
+            node.getLayer()?.batchDraw();
+          }
+        }
+      }
+      return;
+    }
+
     if (livePenRef.current) {
       extendPen(wp.x, wp.y);
       return;
@@ -638,6 +682,17 @@ export function KonvaCanvas({
 
   const onStagePointerUp = useCallback(
     (e?: KonvaEventObject<PointerEvent>) => {
+      if (dragGroupRef.current) {
+        dragGroupRef.current = null;
+        const ids = selectedIdsRef.current;
+        for (const id of ids) {
+          const node = nodeRefs.current.get(id);
+          if (node) {
+            updateShape(id, { x: node.x(), y: node.y() });
+          }
+        }
+        return;
+      }
       if (marqueeRef.current) {
         const m = marqueeRef.current;
         marqueeRef.current = null;
@@ -1145,11 +1200,6 @@ const ShapeNode = React.memo(function ShapeNode({
     onDblClick: (e: KonvaEventObject<MouseEvent>) => onDblClick(shape, e),
     onPointerEnter: () => onHover(true),
     onPointerLeave: () => onHover(false),
-    onPointerDown: (e: KonvaEventObject<PointerEvent>) => {
-      if (tool === "select" && selectedIds.includes(shape.id)) {
-        e.cancelBubble = true;
-      }
-    },
   };
 
   // Adapt colors for dark mode without mutating stored shape data
