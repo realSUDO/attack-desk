@@ -168,6 +168,8 @@ export function KonvaCanvas({
     shapeId: string;
     point: { x: number; y: number };
   } | null>(null);
+  const magnetTargetRef = useRef(magnetTarget);
+  magnetTargetRef.current = magnetTarget;
   const dragGroupRef = useRef<{ startWx: number; startWy: number } | null>(null);
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
@@ -512,26 +514,27 @@ export function KonvaCanvas({
         setMarquee(null);
       }
       // Clear magnet hint when not actively drawing an arrow.
-      if (tool !== "arrow" && magnetTarget) {
+      if (tool !== "arrow" && magnetTargetRef.current) {
         setMagnetTarget(null);
       }
 
       if (tool === "select") {
+        const curIds = selectedIdsRef.current;
         if (shapeNode) {
           const id = shapeNode.id();
           if (additive) {
-            if (selectedIds.includes(id)) {
-              setSelectedIds(selectedIds.filter((sid) => sid !== id), false);
+            if (curIds.includes(id)) {
+              setSelectedIds(curIds.filter((sid) => sid !== id), false);
             } else {
-              setSelectedIds([...selectedIds, id], false);
+              setSelectedIds([...curIds, id], false);
             }
-          } else if (!selectedIds.includes(id)) {
+          } else if (!curIds.includes(id)) {
             setSelectedIds([id], false);
           }
-        } else if (isTransformerTarget(e.target) || selectedIds.length > 0) {
+        } else if (isTransformerTarget(e.target) || curIds.length > 0) {
           // Click on transformer border or near selected shapes → group drag
           const pad = 20 / scene.camera.zoom;
-          const nearSelected = selectedIds.some((sid) => {
+          const nearSelected = curIds.some((sid) => {
             const s = scene.shapes.find((sh) => sh.id === sid);
             if (!s) return false;
             const b = shapeBounds(s);
@@ -608,8 +611,6 @@ export function KonvaCanvas({
       beginArrow,
       beginErase,
       setSelectedIds,
-      selectedIds,
-      magnetTarget,
       shapeIds,
     ],
   );
@@ -708,15 +709,24 @@ export function KonvaCanvas({
         }
         const hit: Array<string> = [];
         for (const s of orderedShapes) {
-          const b = shapeBounds(s);
-          if (!b) continue;
-          if (
-            b.x < x2 &&
-            b.x + b.width > x1 &&
-            b.y < y2 &&
-            b.y + b.height > y1
-          ) {
-            hit.push(s.id);
+          if (s.type === "pen") {
+            const inRect = s.points.some((p) => {
+              const px = s.x + p[0];
+              const py = s.y + p[1];
+              return px >= x1 && px <= x2 && py >= y1 && py <= y2;
+            });
+            if (inRect) hit.push(s.id);
+          } else {
+            const b = shapeBounds(s);
+            if (!b) continue;
+            if (
+              b.x < x2 &&
+              b.x + b.width > x1 &&
+              b.y < y2 &&
+              b.y + b.height > y1
+            ) {
+              hit.push(s.id);
+            }
           }
         }
         setSelectedIds(hit, false);
