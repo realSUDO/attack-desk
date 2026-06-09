@@ -975,7 +975,7 @@ export function KonvaCanvas({
     };
 
     const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) {
+      if (e.touches.length < 2 && initialDist > 0) {
         onPinchEnd?.();
         const stage = stageRef.current;
         if (stage) {
