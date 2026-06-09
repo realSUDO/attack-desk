@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { PostLabClient } from "@/components/post-lab/PostLabClient";
 import type { BoardPost } from "@/components/post-lab/PostCard";
+import { withRetry } from "@/lib/prisma";
 import { getPosts } from "@/db/queries/posts";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export default async function PostLabPage() {
   let databaseError: string | null = null;
 
   try {
-    posts = await getPosts();
+    posts = await withRetry(() => getPosts());
   } catch {
     databaseError =
       "Database unavailable. Start PostgreSQL and configure DATABASE_URL.";

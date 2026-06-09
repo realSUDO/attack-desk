@@ -119,17 +119,6 @@ export function KonvaCanvas({
   const cameraCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const rightPanRef = useRef<{
-    pointerId: number;
-    startPointer: { x: number; y: number };
-    startCamera: { x: number; y: number };
-    clientPoint: { x: number; y: number };
-    worldPoint: { x: number; y: number };
-    ids: ReadonlyArray<string>;
-    active: boolean;
-  } | null>(null);
-  const suppressContextMenuRef = useRef(false);
-  const ignoreNativeContextMenuUntilRef = useRef(0);
   const transformAnchorRef = useRef<string | null>(null);
 
   // Live pen/rect/ellipse/arrow state lives in refs so high-frequency
@@ -494,27 +483,7 @@ export function KonvaCanvas({
       const pointer = stage.getPointerPosition();
       if (!pointer) return;
 
-      if (isRight) {
-        const target = findShapeNode(e.target, shapeIds);
-        const id = target?.id();
-        const ids = id
-          ? selectedIds.includes(id)
-            ? selectedIds
-            : [id]
-          : [];
-        rightPanRef.current = {
-          pointerId: native.pointerId,
-          startPointer: pointer,
-          startCamera: { x: stage.x(), y: stage.y() },
-          clientPoint: { x: native.clientX, y: native.clientY },
-          worldPoint: getWorldPoint(pointer.x, pointer.y),
-          ids,
-          active: false,
-        };
-        suppressContextMenuRef.current = false;
-        stage.container().setPointerCapture?.(native.pointerId);
-        return;
-      }
+      if (isRight) return;
       const wp = getWorldPoint(pointer.x, pointer.y);
       const shapeNode = findShapeNode(e.target, shapeIds);
       const additive = native.shiftKey;
@@ -610,25 +579,6 @@ export function KonvaCanvas({
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
-    const rightPan = rightPanRef.current;
-    if (rightPan) {
-      const dx = pointer.x - rightPan.startPointer.x;
-      const dy = pointer.y - rightPan.startPointer.y;
-      if (!rightPan.active && Math.hypot(dx, dy) < 6) return;
-
-      if (!rightPan.active) {
-        rightPan.active = true;
-        suppressContextMenuRef.current = true;
-        stage.container().style.cursor = "grabbing";
-      }
-      const x = rightPan.startCamera.x + dx;
-      const y = rightPan.startCamera.y + dy;
-      stage.position({ x, y });
-      stage.batchDraw();
-      const container = containerRef.current;
-      if (container) container.style.backgroundPosition = `${x}px ${y}px`;
-      return;
-    }
 
     const wp = getWorldPoint(pointer.x, pointer.y);
 
@@ -672,37 +622,6 @@ export function KonvaCanvas({
 
   const onStagePointerUp = useCallback(
     (e?: KonvaEventObject<PointerEvent>) => {
-      const rightPan = rightPanRef.current;
-      if (rightPan) {
-        const stage = stageRef.current;
-        if (stage) {
-          if (rightPan.active) {
-            setCamera({ x: stage.x(), y: stage.y() });
-            stage.container().style.cursor = cursorForTool(
-              tool,
-            );
-          } else {
-            if (rightPan.ids.length > 0) {
-              setSelectedIds(rightPan.ids, false);
-            }
-            onContextMenuEvent(
-              {
-                sx: rightPan.clientPoint.x,
-                sy: rightPan.clientPoint.y,
-                wx: rightPan.worldPoint.x,
-                wy: rightPan.worldPoint.y,
-              },
-              rightPan.ids,
-            );
-            ignoreNativeContextMenuUntilRef.current = performance.now() + 250;
-          }
-          if (e) {
-            stage.container().releasePointerCapture?.(rightPan.pointerId);
-          }
-        }
-        rightPanRef.current = null;
-        return;
-      }
       if (marqueeRef.current) {
         const m = marqueeRef.current;
         marqueeRef.current = null;
@@ -825,65 +744,87 @@ export function KonvaCanvas({
     [setCamera, containerRef],
   );
 
-  const openContextMenu = useCallback(
-    (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (performance.now() < ignoreNativeContextMenuUntilRef.current) return;
-      if (rightPanRef.current) return;
-      if (suppressContextMenuRef.current) {
-        suppressContextMenuRef.current = false;
-        return;
-      }
-      const stage = stageRef.current;
-      if (!stage) return;
-      stage.setPointersPositions(event);
-      const pointer = stage.getPointerPosition();
-      if (!pointer) return;
-      const wp = getWorldPoint(pointer.x, pointer.y);
-      const target = findShapeNode(stage.getIntersection(pointer), shapeIds);
-      let ids: ReadonlyArray<string> = [];
-      if (target) {
-        const id = target.id();
-        ids = selectedIds.includes(id) ? selectedIds : [id];
-        if (!selectedIds.includes(id)) {
-          setSelectedIds(ids, false);
-        }
-      }
-      onContextMenuEvent(
-        {
-          sx: event.clientX,
-          sy: event.clientY,
-          wx: wp.x,
-          wy: wp.y,
-        },
-        ids,
-      );
-    },
-    [
-      getWorldPoint,
-      onContextMenuEvent,
-      selectedIds,
-      setSelectedIds,
-      shapeIds,
-    ],
-  );
-
+  // Right-click: pan on drag, context menu on plain click — handled via native
+  // DOM events so pointer capture works correctly (Konva events don't fire
+  // outside the canvas element when pointer is captured).
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const handleContextMenu = (event: MouseEvent) => {
-      openContextMenu(event);
+    const stage = stageRef.current;
+    if (!stage) return;
+    const el = stage.container();
+
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 2) return;
+      e.preventDefault();
+
+      const stageNode = stageRef.current;
+      if (!stageNode) return;
+      const canvasEl = el.querySelector("canvas");
+      const rect = canvasEl ? canvasEl.getBoundingClientRect() : el.getBoundingClientRect();
+      const startX = e.clientX - rect.left;
+      const startY = e.clientY - rect.top;
+
+      // Find shape under cursor for context menu.
+      const pointer = stageNode.getPointerPosition() ?? { x: startX, y: startY };
+      const target = stageNode.getIntersection(pointer);
+      const shapeNode = findShapeNode(target, shapeIds);
+      const id = shapeNode?.id();
+      const ids: string[] = id
+        ? (selectedIds as string[]).includes(id)
+          ? (selectedIds as string[])
+          : [id]
+        : [];
+
+      const startCamera = { x: stageNode.x(), y: stageNode.y() };
+      const worldPoint = getWorldPoint(pointer.x, pointer.y);
+      let active = false;
+
+      const onMove = (me: MouseEvent) => {
+        const dx = me.clientX - e.clientX;
+        const dy = me.clientY - e.clientY;
+        if (!active && Math.hypot(dx, dy) < 6) return;
+        if (!active) {
+          active = true;
+          el.style.cursor = "grabbing";
+        }
+        const nx = startCamera.x + dx;
+        const ny = startCamera.y + dy;
+        stageNode.position({ x: nx, y: ny });
+        stageNode.batchDraw();
+        const container = containerRef.current;
+        if (container) container.style.backgroundPosition = `${nx}px ${ny}px`;
+      };
+
+      const onUp = (ue: MouseEvent) => {
+        if (ue.button !== 2) return;
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        el.style.cursor = cursorForTool(tool);
+        if (active) {
+          setCamera({ x: stageNode.x(), y: stageNode.y() });
+        } else {
+          if (ids.length > 0) setSelectedIds(ids, false);
+          onContextMenuEvent(
+            { sx: ue.clientX, sy: ue.clientY, wx: worldPoint.x, wy: worldPoint.y },
+            ids,
+          );
+        }
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
     };
-    container.addEventListener("contextmenu", handleContextMenu, {
-      capture: true,
-    });
+
+    el.addEventListener("contextmenu", onContextMenu);
+    el.addEventListener("mousedown", onMouseDown);
     return () => {
-      container.removeEventListener("contextmenu", handleContextMenu, {
-        capture: true,
-      });
+      el.removeEventListener("contextmenu", onContextMenu);
+      el.removeEventListener("mousedown", onMouseDown);
     };
-  }, [containerRef, openContextMenu]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageRef, selectedIds, shapeIds, tool, getWorldPoint, setCamera, setSelectedIds, onContextMenuEvent, containerRef]);
+
 
   const onShapeDblClick = useCallback(
     (shape: Shape, e: KonvaEventObject<MouseEvent>) => {
@@ -897,7 +838,7 @@ export function KonvaCanvas({
   const handleShapeHover = useCallback(
     (hovering: boolean) => {
       const stage = stageRef.current;
-      if (!stage || rightPanRef.current?.active) return;
+      if (!stage) return;
       stage.container().style.cursor =
         tool === "select" && hovering ? "move" : cursorForTool(tool);
     },

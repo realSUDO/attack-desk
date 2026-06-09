@@ -1,3 +1,4 @@
+import { withRetry } from "@/lib/prisma";
 import { getCanvases } from "@/db/queries/canvases";
 import { CanvasList } from "@/components/canvas/CanvasList";
 import { Sidebar } from "@/components/dashboard/Sidebar";
@@ -16,7 +17,7 @@ export default async function CanvasListPage() {
   let databaseAvailable = true;
 
   try {
-    const list = await getCanvases();
+    const list = await withRetry(() => getCanvases());
     canvases = list.map((c) => ({
       id: c.id,
       title: c.title,

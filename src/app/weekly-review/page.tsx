@@ -3,6 +3,7 @@ import {
   WeeklyReviewClient,
   type ReviewItem,
 } from "@/components/weekly-review/WeeklyReviewClient";
+import { withRetry } from "@/lib/prisma";
 import { getWeeklyReviews } from "@/db/queries/weekly-reviews";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export default async function WeeklyReviewPage() {
   let databaseError: string | null = null;
 
   try {
-    reviews = await getWeeklyReviews();
+    reviews = await withRetry(() => getWeeklyReviews());
   } catch {
     databaseError =
       "Database unavailable. Start PostgreSQL and configure DATABASE_URL.";

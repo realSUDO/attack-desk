@@ -1,3 +1,4 @@
+import { withRetry } from "@/lib/prisma";
 import {
   emptyDashboardStats,
   getDashboardStats,
@@ -15,7 +16,7 @@ export default async function DashboardPage() {
 
   if (databaseAvailable) {
     try {
-      stats = await getDashboardStats();
+      stats = await withRetry(() => getDashboardStats());
     } catch {
       databaseAvailable = false;
     }

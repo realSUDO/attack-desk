@@ -6,6 +6,7 @@ import {
 import { BoardClient } from "@/components/board/BoardClient";
 import { type BoardMission } from "@/components/board/MissionCard";
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { withRetry } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -31,10 +32,10 @@ export default async function BoardPage() {
   let databaseError: string | null = null;
 
   try {
-    [rawMissions, rawDeadlines] = await Promise.all([
+    [rawMissions, rawDeadlines] = await withRetry(() => Promise.all([
       getMissionsWithRelations(),
       getDeadlines({ status: "ACTIVE" }),
-    ]);
+    ]));
   } catch {
     databaseError =
       "Database unavailable. Start PostgreSQL and configure DATABASE_URL.";
