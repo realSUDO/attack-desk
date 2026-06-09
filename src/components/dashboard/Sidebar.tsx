@@ -51,7 +51,7 @@ export function Sidebar() {
         type="button"
         aria-label="Toggle navigation"
         onClick={() => setOpen((v) => !v)}
-        className="fixed top-3 left-3 z-[70] flex h-10 w-10 items-center justify-center rounded-full border border-outline-variant bg-surface-container shadow-lg md:hidden"
+        className="fixed bottom-4 left-4 z-[70] flex h-10 w-10 items-center justify-center rounded-full border border-outline-variant bg-surface-container shadow-lg md:hidden"
       >
         <MaterialIcon name="menu" size={20} />
       </button>

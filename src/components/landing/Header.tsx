@@ -16,10 +16,10 @@ export function Header() {
         </svg>
       </Link>
 
-      <nav className="hidden items-center gap-6 md:flex">
+      <nav className="flex items-center gap-6">
         <Link
           href="#methodology"
-          className="font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
+          className="hidden font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary md:inline-block"
         >
           Manifesto
         </Link>
@@ -30,14 +30,6 @@ export function Header() {
           Open Workspace
         </Link>
       </nav>
-
-      <button
-        type="button"
-        aria-label="Open menu"
-        className="cursor-pointer text-primary md:hidden"
-      >
-        <MaterialIcon name="menu" size={24} />
-      </button>
     </header>
   );
 }
