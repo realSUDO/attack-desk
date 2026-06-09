@@ -1385,7 +1385,7 @@ function shapeBounds(shape: Shape): Bounds | null {
       if (p[1] < minY) minY = p[1];
       if (p[1] > maxY) maxY = p[1];
     }
-    const pad = arrowHeadLength(strokeWidth) + strokeWidth;
+    const pad = arrowHeadLength(shape.strokeWidth) + shape.strokeWidth;
     return {
       x: shape.x + minX - pad,
       y: shape.y + minY - pad,
@@ -1519,7 +1519,7 @@ function pointInArrow(
   tolerance: number,
 ): boolean {
   if (shape.points.length < 2) return false;
-  const w = strokeWidth + tolerance;
+  const w = shape.strokeWidth + tolerance;
   for (let i = 1; i < shape.points.length; i += 1) {
     const a = shape.points[i - 1]!;
     const b = shape.points[i]!;
@@ -1527,7 +1527,7 @@ function pointInArrow(
   }
   const last = shape.points[shape.points.length - 1]!;
   const prev = shape.points[shape.points.length - 2]!;
-  const head = arrowHeadLength(strokeWidth);
+  const head = arrowHeadLength(shape.strokeWidth);
   const dx = last[0] - prev[0];
   const dy = last[1] - prev[1];
   const len = Math.hypot(dx, dy) || 1;
@@ -1537,7 +1537,7 @@ function pointInArrow(
   const baseY = last[1] - uy * head;
   const px = -uy;
   const py = ux;
-  const halfWidth = arrowHeadWidth(strokeWidth) / 2;
+  const halfWidth = arrowHeadWidth(shape.strokeWidth) / 2;
   const a1x = baseX + px * halfWidth;
   const a1y = baseY + py * halfWidth;
   const a2x = baseX - px * halfWidth;
