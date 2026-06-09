@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { signOut, useSession } from "next-auth/react";
 
 import { MaterialIcon } from "../landing/icons/MaterialIcon";
@@ -32,67 +32,6 @@ export function Sidebar() {
   const router = useRouter();
   const dark = useSyncExternalStore(subscribeToDark, () => document.documentElement.classList.contains("dark"), () => true);
   const { data: session, status } = useSession();
-  const [cloudSyncing, setCloudSyncing] = useState(false);
-  const cloudSyncCalled = useRef(false);
-
-  const handleCloudSync = useCallback(async () => {
-    if (cloudSyncCalled.current) return;
-    cloudSyncCalled.current = true;
-    setCloudSyncing(true);
-    try {
-      const { getAllLocalData, clearAllLocalData } = await import("@/lib/local-storage-db");
-      const local = getAllLocalData();
-      const hasData = local.missions.length > 0 || local.deadlines.length > 0 || local.posts.length > 0 || local.canvases.length > 0 || local.reviews.length > 0;
-      if (!hasData) { setCloudSyncing(false); return; }
-
-      for (const canvas of local.canvases) {
-        const res = await fetch("/api/canvases", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: canvas.title, description: canvas.description, data: canvas.data }),
-        });
-        const data = await res.json();
-        const newCanvasId = data.data?.id;
-        for (const mission of local.missions) {
-          await fetch("/api/missions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...mission, canvasId: newCanvasId ?? mission.canvasId }),
-          });
-        }
-        for (const deadline of local.deadlines) {
-          await fetch("/api/deadlines", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(deadline),
-          });
-        }
-        for (const post of local.posts) {
-          await fetch("/api/posts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...post, canvasId: newCanvasId ?? post.canvasId }),
-          });
-        }
-        for (const review of local.reviews) {
-          await fetch("/api/weekly-reviews", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(review),
-          });
-        }
-      }
-      clearAllLocalData();
-      router.refresh();
-    } catch { /* silent */ }
-    setCloudSyncing(false);
-  }, [router]);
-
-  useEffect(() => {
-    if (status === "authenticated" && !cloudSyncCalled.current) {
-      handleCloudSync();
-    }
-  }, [status, handleCloudSync]);
 
   useEffect(() => {
     for (const item of navItems) {

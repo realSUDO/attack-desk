@@ -7,7 +7,7 @@ import {
 
 import { schoolbell } from "@/lib/fonts";
 import { AuthProvider } from "@/components/AuthProvider";
-import { CloudSyncToast } from "@/components/CloudSyncToast";
+import { CloudSyncModal } from "@/components/CloudSyncModal";
 
 import "./globals.css";
 
@@ -62,7 +62,7 @@ export default function RootLayout({
       >
         <AuthProvider>
           {children}
-          <CloudSyncToast />
+          <CloudSyncModal />
         </AuthProvider>
       </body>
     </html>
