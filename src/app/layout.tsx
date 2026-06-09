@@ -6,6 +6,8 @@ import {
 } from "next/font/google";
 
 import { schoolbell } from "@/lib/fonts";
+import { AuthProvider } from "@/components/AuthProvider";
+import { CloudSyncToast } from "@/components/CloudSyncToast";
 
 import "./globals.css";
 
@@ -58,7 +60,10 @@ export default function RootLayout({
         className="font-body-md text-body-md bg-background text-on-surface"
         suppressHydrationWarning
       >
-        {children}
+        <AuthProvider>
+          {children}
+          <CloudSyncToast />
+        </AuthProvider>
       </body>
     </html>
   );

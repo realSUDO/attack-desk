@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { ZodError } from "zod";
 
 import {
@@ -13,7 +14,12 @@ import { createWeeklyReviewSchema } from "@/lib/validators";
 
 export async function GET() {
   try {
-    const reviews = await getWeeklyReviews();
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
+    const reviews = await getWeeklyReviews(userId);
     return successResponse(
       reviews,
       "Weekly reviews retrieved successfully",
@@ -25,8 +31,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const input = createWeeklyReviewSchema.parse(await request.json());
-    const review = await createWeeklyReview(input);
+    const review = await createWeeklyReview({ ...input, userId });
 
     return successResponse(
       review,

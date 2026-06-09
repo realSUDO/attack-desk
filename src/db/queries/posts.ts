@@ -8,9 +8,9 @@ export type PostFilters = {
   canvasId?: string;
 };
 
-export function getPosts(filters: PostFilters = {}) {
+export function getPosts(filters: PostFilters = {}, userId: string) {
   return prisma.postIdea.findMany({
-    where: filters,
+    where: { ...filters, userId },
     orderBy: [
       { status: "asc" },
       { order: "asc" },
@@ -19,9 +19,9 @@ export function getPosts(filters: PostFilters = {}) {
   });
 }
 
-export function getPostById(id: string) {
+export function getPostById(id: string, userId: string) {
   return prisma.postIdea.findUnique({
-    where: { id },
+    where: { id, userId },
     include: { canvas: true },
   });
 }
@@ -33,13 +33,14 @@ export function createPost(data: Prisma.PostIdeaUncheckedCreateInput) {
 export function updatePost(
   id: string,
   data: Prisma.PostIdeaUncheckedUpdateInput,
+  userId: string,
 ) {
   return prisma.postIdea.update({
-    where: { id },
+    where: { id, userId },
     data,
   });
 }
 
-export function deletePost(id: string) {
-  return prisma.postIdea.delete({ where: { id } });
+export function deletePost(id: string, userId: string) {
+  return prisma.postIdea.delete({ where: { id, userId } });
 }

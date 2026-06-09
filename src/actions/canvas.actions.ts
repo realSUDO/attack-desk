@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 
+import { auth } from "@/auth";
+
 import {
   createCanvas,
   deleteCanvas,
@@ -31,6 +33,12 @@ export async function createCanvasAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
     const input = createCanvasSchema.parse({
       title: getOptionalFormString(formData, "title"),
       description: getNullableFormString(formData, "description"),
@@ -38,7 +46,7 @@ export async function createCanvasAction(
       thumbnail: getNullableFormString(formData, "thumbnail"),
       deadlineId: getNullableFormString(formData, "deadlineId"),
     });
-    const created = await createCanvas(input);
+    const created = await createCanvas({ ...input, userId });
     revalidateCanvasPaths();
 
     return {
@@ -68,7 +76,13 @@ export async function saveCanvasAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const existing = await getCanvasById(id);
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    const existing = await getCanvasById(id, userId);
     if (!existing) {
       return { success: false, message: "Canvas not found" };
     }
@@ -79,7 +93,7 @@ export async function saveCanvasAction(
     await updateCanvas(id, {
       ...(title ? { title } : {}),
       ...(rawData !== undefined ? { data: rawData } : {}),
-    });
+    }, userId);
     revalidateCanvasPaths();
 
     return { success: true, message: "Canvas saved" };
@@ -104,11 +118,17 @@ export async function deleteCanvasAction(
   id: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getCanvasById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getCanvasById(id, userId))) {
       return { success: false, message: "Canvas not found" };
     }
 
-    await deleteCanvas(id);
+    await deleteCanvas(id, userId);
     revalidateCanvasPaths();
 
     return { success: true, message: "Canvas deleted successfully" };
@@ -122,13 +142,19 @@ export async function linkMissionToCanvasAction(
   missionId: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getCanvasById(canvasId))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getCanvasById(canvasId, userId))) {
       return { success: false, message: "Canvas not found" };
     }
-    if (!(await getMissionById(missionId))) {
+    if (!(await getMissionById(missionId, userId))) {
       return { success: false, message: "Mission not found" };
     }
-    await updateMission(missionId, { canvasId });
+    await updateMission(missionId, { canvasId }, userId);
     revalidateCanvasPaths();
     revalidatePath(`/canvas/${canvasId}`);
 
@@ -150,10 +176,16 @@ export async function unlinkMissionFromCanvasAction(
   missionId: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getMissionById(missionId))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getMissionById(missionId, userId))) {
       return { success: false, message: "Mission not found" };
     }
-    await updateMission(missionId, { canvasId: null });
+    await updateMission(missionId, { canvasId: null }, userId);
     revalidateCanvasPaths();
     revalidatePath(`/canvas/${canvasId}`);
 

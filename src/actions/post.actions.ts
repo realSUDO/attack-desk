@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 
+import { auth } from "@/auth";
+
 import {
   createPost,
   deletePost,
@@ -51,8 +53,14 @@ export async function createPostAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
     const input = createPostSchema.parse(compact(postFormData(formData)));
-    await createPost(input);
+    await createPost({ ...input, userId });
     revalidatePostPaths();
 
     return { success: true, message: "Post created successfully" };
@@ -74,12 +82,18 @@ export async function updatePostAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    if (!(await getPostById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getPostById(id, userId))) {
       return { success: false, message: "Post not found" };
     }
 
     const input = updatePostSchema.parse(compact(postFormData(formData)));
-    await updatePost(id, input);
+    await updatePost(id, input, userId);
     revalidatePostPaths();
 
     return { success: true, message: "Post updated successfully" };
@@ -100,11 +114,17 @@ export async function markPostReadyAction(
   id: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getPostById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getPostById(id, userId))) {
       return { success: false, message: "Post not found" };
     }
 
-    await updatePost(id, { status: "READY" });
+    await updatePost(id, { status: "READY" }, userId);
     revalidatePostPaths();
 
     return { success: true, message: "Post marked ready" };
@@ -117,11 +137,17 @@ export async function markPostPostedAction(
   id: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getPostById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getPostById(id, userId))) {
       return { success: false, message: "Post not found" };
     }
 
-    await updatePost(id, { status: "POSTED" });
+    await updatePost(id, { status: "POSTED" }, userId);
     revalidatePostPaths();
 
     return { success: true, message: "Post marked posted" };
@@ -134,11 +160,17 @@ export async function deletePostAction(
   id: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getPostById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getPostById(id, userId))) {
       return { success: false, message: "Post not found" };
     }
 
-    await deletePost(id);
+    await deletePost(id, userId);
     revalidatePostPaths();
 
     return { success: true, message: "Post deleted successfully" };

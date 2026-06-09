@@ -12,16 +12,16 @@ export type DeadlineFilters = {
   category?: string;
 };
 
-export function getDeadlines(filters: DeadlineFilters = {}) {
+export function getDeadlines(filters: DeadlineFilters = {}, userId: string) {
   return prisma.deadline.findMany({
-    where: filters,
+    where: { ...filters, userId },
     orderBy: { dueDate: "asc" },
   });
 }
 
-export function getDeadlineById(id: string) {
+export function getDeadlineById(id: string, userId: string) {
   return prisma.deadline.findUnique({
-    where: { id },
+    where: { id, userId },
     include: {
       missions: true,
       canvases: true,
@@ -36,13 +36,14 @@ export function createDeadline(data: Prisma.DeadlineUncheckedCreateInput) {
 export function updateDeadline(
   id: string,
   data: Prisma.DeadlineUncheckedUpdateInput,
+  userId: string,
 ) {
   return prisma.deadline.update({
-    where: { id },
+    where: { id, userId },
     data,
   });
 }
 
-export function deleteDeadline(id: string) {
-  return prisma.deadline.delete({ where: { id } });
+export function deleteDeadline(id: string, userId: string) {
+  return prisma.deadline.delete({ where: { id, userId } });
 }

@@ -51,6 +51,7 @@ type Props = {
   initialScene: Scene;
   linked: LinkedRef;
   availableMissions: ReadonlyArray<AvailableMission>;
+  userId?: string;
 };
 
 const TOOL_KEYBINDS: Record<string, Tool> = {
@@ -76,6 +77,7 @@ export function CanvasPage({
   initialScene,
   linked,
   availableMissions,
+  userId,
 }: Props) {
   const router = useRouter();
   const api = useScene(initialScene);
@@ -125,6 +127,18 @@ export function CanvasPage({
     const sequence = ++saveSequenceRef.current;
     setIsSaving(true);
 
+    if (!userId) {
+      import("@/lib/local-storage-db").then(({ localUpdateCanvas }) => {
+        if (saveSequenceRef.current !== sequence) return;
+        localUpdateCanvas(canvasId, { title: titleSnapshot, data: sceneSnapshot });
+        setLastSavedScene(sceneSnapshot);
+        setLastSavedTitle(titleSnapshot);
+        setLastSavedAt(new Date());
+        if (saveSequenceRef.current === sequence) setIsSaving(false);
+      });
+      return;
+    }
+
     void fetch(`/api/canvases/${encodeURIComponent(canvasId)}`, {
       method: "PATCH",
       headers: {
@@ -146,7 +160,7 @@ export function CanvasPage({
       .finally(() => {
         if (saveSequenceRef.current === sequence) setIsSaving(false);
       });
-  }, [api.scene, canvasId, title]);
+  }, [api.scene, canvasId, title, userId]);
 
   useEffect(() => {
     if (!isDirty) return;
@@ -398,19 +412,29 @@ export function CanvasPage({
       const ok = window.confirm("Delete this canvas? This cannot be undone.");
       if (!ok) return;
     }
+    if (!userId) {
+      import("@/lib/local-storage-db").then(({ localDeleteCanvas }) => {
+        localDeleteCanvas(canvasId);
+        router.push("/canvas");
+      });
+      return;
+    }
     startDelete(async () => {
       const result = await deleteCanvasAction(canvasId);
       if (result.success) router.push("/canvas");
     });
-  }, [canvasId, router]);
+  }, [canvasId, router, userId]);
 
   const handleUnlinkMission = useCallback(
     (missionId: string) => {
-      startDelete(async () => {
-        await unlinkMissionFromCanvasAction(canvasId, missionId);
-      });
+      if (userId) {
+        startDelete(async () => {
+          await unlinkMissionFromCanvasAction(canvasId, missionId);
+        });
+      }
+      // Anonymous: nothing to unlink since localStorage has no link concept
     },
-    [canvasId],
+    [canvasId, userId],
   );
 
   const handleShowContextMenu = useCallback(

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { signOut, useSession } from "next-auth/react";
 
 import { MaterialIcon } from "../landing/icons/MaterialIcon";
 
@@ -30,6 +31,68 @@ export function Sidebar() {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const dark = useSyncExternalStore(subscribeToDark, () => document.documentElement.classList.contains("dark"), () => true);
+  const { data: session, status } = useSession();
+  const [cloudSyncing, setCloudSyncing] = useState(false);
+  const cloudSyncCalled = useRef(false);
+
+  const handleCloudSync = useCallback(async () => {
+    if (cloudSyncCalled.current) return;
+    cloudSyncCalled.current = true;
+    setCloudSyncing(true);
+    try {
+      const { getAllLocalData, clearAllLocalData } = await import("@/lib/local-storage-db");
+      const local = getAllLocalData();
+      const hasData = local.missions.length > 0 || local.deadlines.length > 0 || local.posts.length > 0 || local.canvases.length > 0 || local.reviews.length > 0;
+      if (!hasData) { setCloudSyncing(false); return; }
+
+      for (const canvas of local.canvases) {
+        const res = await fetch("/api/canvases", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: canvas.title, description: canvas.description, data: canvas.data }),
+        });
+        const data = await res.json();
+        const newCanvasId = data.data?.id;
+        for (const mission of local.missions) {
+          await fetch("/api/missions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...mission, canvasId: newCanvasId ?? mission.canvasId }),
+          });
+        }
+        for (const deadline of local.deadlines) {
+          await fetch("/api/deadlines", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(deadline),
+          });
+        }
+        for (const post of local.posts) {
+          await fetch("/api/posts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...post, canvasId: newCanvasId ?? post.canvasId }),
+          });
+        }
+        for (const review of local.reviews) {
+          await fetch("/api/weekly-reviews", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(review),
+          });
+        }
+      }
+      clearAllLocalData();
+      router.refresh();
+    } catch { /* silent */ }
+    setCloudSyncing(false);
+  }, [router]);
+
+  useEffect(() => {
+    if (status === "authenticated" && !cloudSyncCalled.current) {
+      handleCloudSync();
+    }
+  }, [status, handleCloudSync]);
 
   useEffect(() => {
     for (const item of navItems) {
@@ -75,7 +138,6 @@ export function Sidebar() {
 
       {/* Middle empty space — toggle centered here */}
       <div className="flex flex-1 items-center justify-center">
-        {/* Square dark/light toggle — sits in the gap between nav and bottom */}
         <button
           type="button"
           aria-label="Toggle dark mode"
@@ -84,13 +146,44 @@ export function Sidebar() {
         >
           <MaterialIcon name="light_mode" size={13} className="z-10 text-on-surface" />
           <MaterialIcon name="dark_mode"  size={13} className="z-10 text-on-surface" />
-          {/* Square sliding thumb */}
           <span
             className="absolute left-[2px] right-[2px] h-[22px] bg-primary transition-[top] duration-300 ease-in-out"
             style={{ top: dark ? "calc(100% - 26px)" : "3px" }}
           />
         </button>
       </div>
+
+      {/* Auth */}
+      {status === "authenticated" && session?.user ? (
+        <div className="flex flex-col items-center gap-2 pb-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
+            {(session.user.name ?? session.user.email ?? "U").charAt(0).toUpperCase()}
+          </div>
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: "/" })}
+            className="text-on-surface-variant hover:text-on-surface text-[9px] transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
+      ) : status === "loading" ? (
+        <div className="pb-3">
+          <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-surface-container-highest" />
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2 pb-3">
+          <Link
+            href="/login"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-outline text-on-surface-variant transition-colors hover:border-primary hover:text-primary"
+          >
+            <MaterialIcon name="person" size={18} />
+          </Link>
+          <Link href="/login" className="text-on-surface-variant hover:text-on-surface text-[9px] transition-colors">
+            Sign in
+          </Link>
+        </div>
+      )}
     </aside>
   );
 }

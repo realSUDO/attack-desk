@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 
+import { auth } from "@/auth";
+
 import {
   createDeadline,
   deleteDeadline,
@@ -48,10 +50,16 @@ export async function createDeadlineAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
     const input = createDeadlineSchema.parse(
       compact(deadlineFormData(formData)),
     );
-    await createDeadline(input);
+    await createDeadline({ ...input, userId });
     revalidateDeadlinePaths();
 
     return {
@@ -76,14 +84,20 @@ export async function updateDeadlineAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    if (!(await getDeadlineById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getDeadlineById(id, userId))) {
       return { success: false, message: "Deadline not found" };
     }
 
     const input = updateDeadlineSchema.parse(
       compact(deadlineFormData(formData)),
     );
-    await updateDeadline(id, input);
+    await updateDeadline(id, input, userId);
     revalidateDeadlinePaths();
 
     return {
@@ -107,11 +121,17 @@ export async function completeDeadlineAction(
   id: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getDeadlineById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getDeadlineById(id, userId))) {
       return { success: false, message: "Deadline not found" };
     }
 
-    await updateDeadline(id, { status: "COMPLETED" });
+    await updateDeadline(id, { status: "COMPLETED" }, userId);
     revalidateDeadlinePaths();
 
     return {
@@ -127,11 +147,17 @@ export async function deleteDeadlineAction(
   id: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getDeadlineById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getDeadlineById(id, userId))) {
       return { success: false, message: "Deadline not found" };
     }
 
-    await deleteDeadline(id);
+    await deleteDeadline(id, userId);
     revalidateDeadlinePaths();
 
     return {

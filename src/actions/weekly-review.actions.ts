@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 
+import { auth } from "@/auth";
+
 import {
   createWeeklyReview,
   deleteWeeklyReview,
@@ -46,10 +48,16 @@ export async function createWeeklyReviewAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
     const input = createWeeklyReviewSchema.parse(
       compact(reviewFormData(formData)),
     );
-    await createWeeklyReview(input);
+    await createWeeklyReview({ ...input, userId });
     revalidateWeeklyReviewPaths();
 
     return {
@@ -74,14 +82,20 @@ export async function updateWeeklyReviewAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    if (!(await getWeeklyReviewById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getWeeklyReviewById(id, userId))) {
       return { success: false, message: "Weekly review not found" };
     }
 
     const input = updateWeeklyReviewSchema.parse(
       compact(reviewFormData(formData)),
     );
-    await updateWeeklyReview(id, input);
+    await updateWeeklyReview(id, input, userId);
     revalidateWeeklyReviewPaths();
 
     return {
@@ -105,11 +119,17 @@ export async function deleteWeeklyReviewAction(
   id: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getWeeklyReviewById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getWeeklyReviewById(id, userId))) {
       return { success: false, message: "Weekly review not found" };
     }
 
-    await deleteWeeklyReview(id);
+    await deleteWeeklyReview(id, userId);
     revalidateWeeklyReviewPaths();
 
     return {

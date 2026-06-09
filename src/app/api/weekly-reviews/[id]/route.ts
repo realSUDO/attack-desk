@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { ZodError } from "zod";
 
 import {
@@ -21,8 +22,13 @@ export async function GET(
   { params }: WeeklyReviewRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
-    const review = await getWeeklyReviewById(id);
+    const review = await getWeeklyReviewById(id, userId);
 
     if (!review) {
       return errorResponse(
@@ -46,9 +52,14 @@ export async function PATCH(
   { params }: WeeklyReviewRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
     const input = updateWeeklyReviewSchema.parse(await request.json());
-    const existing = await getWeeklyReviewById(id);
+    const existing = await getWeeklyReviewById(id, userId);
 
     if (!existing) {
       return errorResponse(
@@ -58,7 +69,7 @@ export async function PATCH(
       );
     }
 
-    const review = await updateWeeklyReview(id, input);
+    const review = await updateWeeklyReview(id, input, userId);
     return successResponse(
       review,
       "Weekly review updated successfully",
@@ -81,8 +92,13 @@ export async function DELETE(
   { params }: WeeklyReviewRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
-    const existing = await getWeeklyReviewById(id);
+    const existing = await getWeeklyReviewById(id, userId);
 
     if (!existing) {
       return errorResponse(
@@ -92,7 +108,7 @@ export async function DELETE(
       );
     }
 
-    const review = await deleteWeeklyReview(id);
+    const review = await deleteWeeklyReview(id, userId);
     return successResponse(
       review,
       "Weekly review deleted successfully",

@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { ZodError } from "zod";
 
 import {
@@ -16,6 +17,11 @@ import {
 
 export async function GET(request: Request) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const searchParams = new URL(request.url).searchParams;
     const filters = missionFiltersSchema.parse({
       status: searchParams.get("status") || undefined,
@@ -23,7 +29,7 @@ export async function GET(request: Request) {
       deadlineId: searchParams.get("deadlineId") || undefined,
       canvasId: searchParams.get("canvasId") || undefined,
     });
-    const missions = await getMissions(filters);
+    const missions = await getMissions(filters, userId);
 
     return successResponse(missions, "Missions retrieved successfully");
   } catch (error) {
@@ -37,8 +43,13 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const input = createMissionSchema.parse(await request.json());
-    const mission = await createMission(input);
+    const mission = await createMission({ ...input, userId });
 
     return successResponse(
       mission,

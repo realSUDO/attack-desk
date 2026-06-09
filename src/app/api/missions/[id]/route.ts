@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { ZodError } from "zod";
 
 import {
@@ -21,8 +22,13 @@ export async function GET(
   { params }: MissionRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
-    const mission = await getMissionById(id);
+    const mission = await getMissionById(id, userId);
 
     if (!mission) {
       return errorResponse(
@@ -43,9 +49,14 @@ export async function PATCH(
   { params }: MissionRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
     const input = updateMissionSchema.parse(await request.json());
-    const existing = await getMissionById(id);
+    const existing = await getMissionById(id, userId);
 
     if (!existing) {
       return errorResponse(
@@ -55,7 +66,7 @@ export async function PATCH(
       );
     }
 
-    const mission = await updateMission(id, input);
+    const mission = await updateMission(id, input, userId);
     return successResponse(mission, "Mission updated successfully");
   } catch (error) {
     if (error instanceof ZodError) {
@@ -75,8 +86,13 @@ export async function DELETE(
   { params }: MissionRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
-    const existing = await getMissionById(id);
+    const existing = await getMissionById(id, userId);
 
     if (!existing) {
       return errorResponse(
@@ -86,7 +102,7 @@ export async function DELETE(
       );
     }
 
-    const mission = await deleteMission(id);
+    const mission = await deleteMission(id, userId);
     return successResponse(mission, "Mission deleted successfully");
   } catch {
     return errorResponse("Unable to delete mission");

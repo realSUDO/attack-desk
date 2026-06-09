@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 const day = 24 * 60 * 60 * 1000;
@@ -101,6 +102,26 @@ const scenes = {
 };
 
 async function main() {
+  // Create test user
+  const hashedPassword = await bcrypt.hash("test@123", 12);
+  const user = await prisma.user.upsert({
+    where: { email: "test@example.com" },
+    update: {
+      name: "Test User",
+      emailVerified: new Date(),
+      hashedPassword,
+    },
+    create: {
+      id: "test-user-id",
+      name: "Test User",
+      email: "test@example.com",
+      emailVerified: new Date(),
+      hashedPassword,
+    },
+  });
+
+  console.log(`Seeded user: ${user.email}`);
+
   const deadlines = [
     ["seed-deadline-launch", "Ship AttackDesk beta", 3, "CRITICAL", "Product"],
     ["seed-deadline-review", "Full-stack assignment review", 8, "HIGH", "School"],
@@ -111,7 +132,7 @@ async function main() {
   for (const [id, title, days, priority, category] of deadlines) {
     await prisma.deadline.upsert({
       where: { id },
-      update: { title, dueDate: fromNow(days), priority, category, status: "ACTIVE" },
+      update: { title, dueDate: fromNow(days), priority, category, status: "ACTIVE", userId: user.id },
       create: {
         id,
         title,
@@ -119,6 +140,7 @@ async function main() {
         dueDate: fromNow(days),
         priority,
         category,
+        userId: user.id,
       },
     });
   }
@@ -150,8 +172,8 @@ async function main() {
   for (const canvas of canvases) {
     await prisma.canvas.upsert({
       where: { id: canvas.id },
-      update: canvas,
-      create: canvas,
+      update: { ...canvas, userId: user.id },
+      create: { ...canvas, userId: user.id },
     });
   }
 
@@ -179,6 +201,7 @@ async function main() {
       deadlineId,
       canvasId,
       order,
+      userId: user.id,
     };
     await prisma.mission.upsert({ where: { id }, update: data, create: { id, ...data } });
   }
@@ -209,6 +232,7 @@ async function main() {
       canvasId,
       postedUrl: status === "POSTED" ? `https://example.com/posts/${id}` : null,
       order,
+      userId: user.id,
     };
     await prisma.postIdea.upsert({ where: { id }, update: data, create: { id, ...data } });
   }
@@ -228,6 +252,7 @@ async function main() {
       wentWrong: "Too many controls initially existed without real actions.",
       nextPlan: "Finish deployment configuration and assignment walkthrough.",
       finalNote: "Prefer real empty states over hidden sample fallbacks.",
+      userId: user.id,
     },
     create: {
       id: "seed-review-current",
@@ -237,6 +262,7 @@ async function main() {
       wentWrong: "Too many controls initially existed without real actions.",
       nextPlan: "Finish deployment configuration and assignment walkthrough.",
       finalNote: "Prefer real empty states over hidden sample fallbacks.",
+      userId: user.id,
     },
   });
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useSession } from "next-auth/react";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import { createCanvasAction } from "@/actions/canvas.actions";
@@ -23,16 +24,25 @@ type Props = {
 const CACHE_KEY = "ad:canvases:data";
 
 export function CanvasList({ databaseAvailable }: Props) {
+  const { data: session, status } = useSession();
+  const isSignedIn = status === "authenticated";
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [isCreating, setIsCreating] = useState(false);
+  const [title, setTitle] = useState("");
   const [canvases, setCanvases] = useState<CanvasItem[]>(() => {
-    try {
-      const raw = sessionStorage.getItem(CACHE_KEY);
-      if (raw) {
-        return JSON.parse(raw).map((c: CanvasItem) => ({
-          ...c,
-          updatedAt: new Date(c.updatedAt),
-        }));
-      }
-    } catch {}
+    if (isSignedIn) {
+      try {
+        const raw = sessionStorage.getItem(CACHE_KEY);
+        if (raw) {
+          return JSON.parse(raw).map((c: CanvasItem) => ({
+            ...c,
+            updatedAt: new Date(c.updatedAt),
+          }));
+        }
+      } catch {}
+      return [];
+    }
     return [];
   });
   const fetching = useRef(false);
@@ -59,15 +69,42 @@ export function CanvasList({ databaseAvailable }: Props) {
   }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [isCreating, setIsCreating] = useState(false);
-  const [title, setTitle] = useState("");
+    if (isSignedIn) {
+      fetchData();
+    } else {
+      const { localGetCanvases } = require("@/lib/local-storage-db");
+      const local = localGetCanvases();
+      setCanvases(
+        local.map((c: { id: string; title: string; description: string | null; updatedAt: string }) => ({
+          id: c.id,
+          title: c.title,
+          description: c.description,
+          updatedAt: new Date(c.updatedAt),
+          missionCount: 0,
+          postIdeaCount: 0,
+        })),
+      );
+    }
+  }, [isSignedIn, fetchData]);
 
   const handleCreate = () => {
     if (!title.trim()) return;
+    if (!isSignedIn) {
+      const { localCreateCanvas } = require("@/lib/local-storage-db");
+      const canvas = localCreateCanvas({
+        title: title.trim(),
+        description: null,
+        data: { camera: { x: 0, y: 0, zoom: 1 }, shapes: [] },
+        thumbnail: null,
+        deadlineId: null,
+      });
+      if (canvas) {
+        setTitle("");
+        setIsCreating(false);
+        router.push(`/canvas/${canvas.id}`);
+      }
+      return;
+    }
     const fd = new FormData();
     fd.set("title", title.trim());
     startTransition(async () => {

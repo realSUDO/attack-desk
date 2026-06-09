@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { ZodError } from "zod";
 
 import {
@@ -22,8 +23,13 @@ export async function GET(
   { params }: CanvasRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
-    const canvas = await getCanvasById(id);
+    const canvas = await getCanvasById(id, userId);
 
     if (!canvas) {
       return errorResponse(
@@ -44,9 +50,14 @@ export async function PATCH(
   { params }: CanvasRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
     const input = updateCanvasSchema.parse(await request.json());
-    const existing = await canvasExists(id);
+    const existing = await canvasExists(id, userId);
 
     if (!existing) {
       return errorResponse(
@@ -56,7 +67,7 @@ export async function PATCH(
       );
     }
 
-    const canvas = await updateCanvas(id, input);
+    const canvas = await updateCanvas(id, input, userId);
     if (request.headers.get("prefer") === "return=minimal") {
       return new Response(null, { status: 204 });
     }
@@ -79,8 +90,13 @@ export async function DELETE(
   { params }: CanvasRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
-    const existing = await getCanvasById(id);
+    const existing = await getCanvasById(id, userId);
 
     if (!existing) {
       return errorResponse(
@@ -90,7 +106,7 @@ export async function DELETE(
       );
     }
 
-    const canvas = await deleteCanvas(id);
+    const canvas = await deleteCanvas(id, userId);
     return successResponse(canvas, "Canvas deleted successfully");
   } catch {
     return errorResponse("Unable to delete canvas");

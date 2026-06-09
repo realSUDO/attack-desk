@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 
+import { auth } from "@/auth";
+
 import {
   createMission,
   deleteMission,
@@ -51,8 +53,14 @@ export async function createMissionAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
     const input = createMissionSchema.parse(compact(missionFormData(formData)));
-    await createMission(input);
+    await createMission({ ...input, userId });
     revalidateMissionPaths();
 
     return {
@@ -77,12 +85,18 @@ export async function updateMissionAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    if (!(await getMissionById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getMissionById(id, userId))) {
       return { success: false, message: "Mission not found" };
     }
 
     const input = updateMissionSchema.parse(compact(missionFormData(formData)));
-    await updateMission(id, input);
+    await updateMission(id, input, userId);
     revalidateMissionPaths();
 
     return {
@@ -106,11 +120,17 @@ export async function completeMissionAction(
   id: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getMissionById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getMissionById(id, userId))) {
       return { success: false, message: "Mission not found" };
     }
 
-    await updateMission(id, { status: "DONE" });
+    await updateMission(id, { status: "DONE" }, userId);
     revalidateMissionPaths();
 
     return {
@@ -126,11 +146,17 @@ export async function deleteMissionAction(
   id: string,
 ): Promise<ActionResult> {
   try {
-    if (!(await getMissionById(id))) {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return { success: false, message: "Unauthorized" };
+    }
+
+    if (!(await getMissionById(id, userId))) {
       return { success: false, message: "Mission not found" };
     }
 
-    await deleteMission(id);
+    await deleteMission(id, userId);
     revalidateMissionPaths();
 
     return {

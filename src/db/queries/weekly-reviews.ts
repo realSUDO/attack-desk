@@ -2,14 +2,15 @@ import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 
-export function getWeeklyReviews() {
+export function getWeeklyReviews(userId: string) {
   return prisma.weeklyReview.findMany({
+    where: { userId },
     orderBy: { weekStart: "desc" },
   });
 }
 
-export function getWeeklyReviewById(id: string) {
-  return prisma.weeklyReview.findUnique({ where: { id } });
+export function getWeeklyReviewById(id: string, userId: string) {
+  return prisma.weeklyReview.findUnique({ where: { id, userId } });
 }
 
 export function createWeeklyReview(
@@ -21,13 +22,14 @@ export function createWeeklyReview(
 export function updateWeeklyReview(
   id: string,
   data: Prisma.WeeklyReviewUncheckedUpdateInput,
+  userId: string,
 ) {
   return prisma.weeklyReview.update({
-    where: { id },
+    where: { id, userId },
     data,
   });
 }
 
-export function deleteWeeklyReview(id: string) {
-  return prisma.weeklyReview.delete({ where: { id } });
+export function deleteWeeklyReview(id: string, userId: string) {
+  return prisma.weeklyReview.delete({ where: { id, userId } });
 }

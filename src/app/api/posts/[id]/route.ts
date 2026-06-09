@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { ZodError } from "zod";
 
 import {
@@ -21,8 +22,13 @@ export async function GET(
   { params }: PostRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
-    const post = await getPostById(id);
+    const post = await getPostById(id, userId);
 
     if (!post) {
       return errorResponse("Post not found", "POST_NOT_FOUND", 404);
@@ -39,15 +45,20 @@ export async function PATCH(
   { params }: PostRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
     const input = updatePostSchema.parse(await request.json());
-    const existing = await getPostById(id);
+    const existing = await getPostById(id, userId);
 
     if (!existing) {
       return errorResponse("Post not found", "POST_NOT_FOUND", 404);
     }
 
-    const post = await updatePost(id, input);
+    const post = await updatePost(id, input, userId);
     return successResponse(post, "Post updated successfully");
   } catch (error) {
     if (error instanceof ZodError) {
@@ -67,14 +78,19 @@ export async function DELETE(
   { params }: PostRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
-    const existing = await getPostById(id);
+    const existing = await getPostById(id, userId);
 
     if (!existing) {
       return errorResponse("Post not found", "POST_NOT_FOUND", 404);
     }
 
-    const post = await deletePost(id);
+    const post = await deletePost(id, userId);
     return successResponse(post, "Post deleted successfully");
   } catch {
     return errorResponse("Unable to delete post");

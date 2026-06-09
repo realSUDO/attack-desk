@@ -24,8 +24,9 @@ function normalizeJson(data: unknown) {
   return data as Prisma.InputJsonValue;
 }
 
-export function getCanvases() {
+export function getCanvases(userId: string) {
   return prisma.canvas.findMany({
+    where: { userId },
     include: {
       _count: {
         select: {
@@ -38,9 +39,9 @@ export function getCanvases() {
   });
 }
 
-export function getCanvasById(id: string) {
+export function getCanvasById(id: string, userId: string) {
   return prisma.canvas.findUnique({
-    where: { id },
+    where: { id, userId },
     include: {
       deadline: true,
       missions: true,
@@ -49,9 +50,9 @@ export function getCanvasById(id: string) {
   });
 }
 
-export function canvasExists(id: string) {
+export function canvasExists(id: string, userId: string) {
   return prisma.canvas.findUnique({
-    where: { id },
+    where: { id, userId },
     select: { id: true },
   });
 }
@@ -68,9 +69,10 @@ export function createCanvas({ data, ...rest }: CanvasInput) {
 export function updateCanvas(
   id: string,
   { data, ...rest }: CanvasUpdateInput,
+  userId: string,
 ) {
   return prisma.canvas.update({
-    where: { id },
+    where: { id, userId },
     data: {
       ...rest,
       ...(data !== undefined ? { data: normalizeJson(data) } : {}),
@@ -78,6 +80,6 @@ export function updateCanvas(
   });
 }
 
-export function deleteCanvas(id: string) {
-  return prisma.canvas.delete({ where: { id } });
+export function deleteCanvas(id: string, userId: string) {
+  return prisma.canvas.delete({ where: { id, userId } });
 }

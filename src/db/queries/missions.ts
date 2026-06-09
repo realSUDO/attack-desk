@@ -22,9 +22,9 @@ export type MissionWithRelations = Prisma.MissionGetPayload<{
   include: typeof missionWithRelationsInclude;
 }>;
 
-export function getMissions(filters: MissionFilters = {}) {
+export function getMissions(filters: MissionFilters = {}, userId: string) {
   return prisma.mission.findMany({
-    where: filters,
+    where: { ...filters, userId },
     orderBy: [
       { status: "asc" },
       { order: "asc" },
@@ -33,9 +33,9 @@ export function getMissions(filters: MissionFilters = {}) {
   });
 }
 
-export function getMissionsWithRelations(filters: MissionFilters = {}) {
+export function getMissionsWithRelations(filters: MissionFilters = {}, userId: string) {
   return prisma.mission.findMany({
-    where: filters,
+    where: { ...filters, userId },
     include: missionWithRelationsInclude,
     orderBy: [
       { status: "asc" },
@@ -45,9 +45,9 @@ export function getMissionsWithRelations(filters: MissionFilters = {}) {
   });
 }
 
-export function getMissionById(id: string) {
+export function getMissionById(id: string, userId: string) {
   return prisma.mission.findUnique({
-    where: { id },
+    where: { id, userId },
     include: {
       deadline: true,
       canvas: true,
@@ -62,13 +62,14 @@ export function createMission(data: Prisma.MissionUncheckedCreateInput) {
 export function updateMission(
   id: string,
   data: Prisma.MissionUncheckedUpdateInput,
+  userId: string,
 ) {
   return prisma.mission.update({
-    where: { id },
+    where: { id, userId },
     data,
   });
 }
 
-export function deleteMission(id: string) {
-  return prisma.mission.delete({ where: { id } });
+export function deleteMission(id: string, userId: string) {
+  return prisma.mission.delete({ where: { id, userId } });
 }

@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { ZodError } from "zod";
 
 import {
@@ -16,13 +17,18 @@ import {
 
 export async function GET(request: Request) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const searchParams = new URL(request.url).searchParams;
     const filters = deadlineFiltersSchema.parse({
       status: searchParams.get("status") || undefined,
       priority: searchParams.get("priority") || undefined,
       category: searchParams.get("category") || undefined,
     });
-    const deadlines = await getDeadlines(filters);
+    const deadlines = await getDeadlines(filters, userId);
 
     return successResponse(
       deadlines,
@@ -39,8 +45,13 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const input = createDeadlineSchema.parse(await request.json());
-    const deadline = await createDeadline(input);
+    const deadline = await createDeadline({ ...input, userId });
 
     return successResponse(
       deadline,

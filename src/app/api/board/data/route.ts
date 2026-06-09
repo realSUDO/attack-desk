@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 import { withRetry } from "@/lib/prisma";
 import {
@@ -8,13 +9,18 @@ import { getDeadlines } from "@/db/queries/deadlines";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return NextResponse.json({ missions: [], deadlines: [] });
+  }
   if (!process.env.DATABASE_URL) {
     return NextResponse.json({ missions: [], deadlines: [] });
   }
   try {
     const [rawMissions, rawDeadlines] = await withRetry(() => Promise.all([
-      getMissionsWithRelations(),
-      getDeadlines({ status: "ACTIVE" }),
+      getMissionsWithRelations({}, userId),
+      getDeadlines({ status: "ACTIVE" }, userId),
     ]));
     const missions = rawMissions.map((m) => ({
       id: m.id,

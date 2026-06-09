@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { ZodError } from "zod";
 
 import {
@@ -21,8 +22,13 @@ export async function GET(
   { params }: DeadlineRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
-    const deadline = await getDeadlineById(id);
+    const deadline = await getDeadlineById(id, userId);
 
     if (!deadline) {
       return errorResponse(
@@ -43,9 +49,14 @@ export async function PATCH(
   { params }: DeadlineRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
     const input = updateDeadlineSchema.parse(await request.json());
-    const existing = await getDeadlineById(id);
+    const existing = await getDeadlineById(id, userId);
 
     if (!existing) {
       return errorResponse(
@@ -55,7 +66,7 @@ export async function PATCH(
       );
     }
 
-    const deadline = await updateDeadline(id, input);
+    const deadline = await updateDeadline(id, input, userId);
     return successResponse(deadline, "Deadline updated successfully");
   } catch (error) {
     if (error instanceof ZodError) {
@@ -75,8 +86,13 @@ export async function DELETE(
   { params }: DeadlineRouteContext,
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
     const { id } = await params;
-    const existing = await getDeadlineById(id);
+    const existing = await getDeadlineById(id, userId);
 
     if (!existing) {
       return errorResponse(
@@ -86,7 +102,7 @@ export async function DELETE(
       );
     }
 
-    const deadline = await deleteDeadline(id);
+    const deadline = await deleteDeadline(id, userId);
     return successResponse(deadline, "Deadline deleted successfully");
   } catch {
     return errorResponse("Unable to delete deadline");

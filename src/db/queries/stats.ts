@@ -46,39 +46,40 @@ const emptyStats: DashboardStats = {
   todaysFocus: null,
 };
 
-export async function getDashboardStats(): Promise<DashboardStats> {
+export async function getDashboardStats(userId: string): Promise<DashboardStats> {
   const [planned, doing, done, upcomingDeadline, recentCanvas, topMission] =
     await prisma.$transaction([
-      prisma.mission.count({ where: { status: "PLANNED" } }),
-      prisma.mission.count({ where: { status: "DOING" } }),
-      prisma.mission.count({ where: { status: "DONE" } }),
+      prisma.mission.count({ where: { status: "PLANNED", userId } }),
+      prisma.mission.count({ where: { status: "DOING", userId } }),
+      prisma.mission.count({ where: { status: "DONE", userId } }),
       prisma.deadline.findFirst({
-        where: { status: "ACTIVE" },
+        where: { status: "ACTIVE", userId },
         orderBy: [{ priority: "desc" }, { dueDate: "asc" }],
         select: { id: true, title: true, dueDate: true, priority: true },
       }),
       prisma.canvas.findFirst({
+        where: { userId },
         orderBy: { updatedAt: "desc" },
         select: { id: true, title: true, updatedAt: true, thumbnail: true },
       }),
       prisma.mission.findFirst({
-        where: { status: "DOING" },
+        where: { status: "DOING", userId },
         orderBy: { updatedAt: "desc" },
         select: { title: true, status: true, priority: true },
       }),
     ]);
 
   const [experiments, hypotheses, validated, archived] = await Promise.all([
-    prisma.postIdea.count({ where: { status: "IDEA" } }),
-    prisma.postIdea.count({ where: { status: "DRAFTING" } }),
-    prisma.postIdea.count({ where: { status: "READY" } }),
-    prisma.postIdea.count({ where: { status: "POSTED" } }),
+    prisma.postIdea.count({ where: { status: "IDEA", userId } }),
+    prisma.postIdea.count({ where: { status: "DRAFTING", userId } }),
+    prisma.postIdea.count({ where: { status: "READY", userId } }),
+    prisma.postIdea.count({ where: { status: "POSTED", userId } }),
   ]);
 
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
   const completedThisCycle = await prisma.mission.count({
-    where: { status: "DONE", updatedAt: { gte: oneWeekAgo } },
+    where: { status: "DONE", updatedAt: { gte: oneWeekAgo }, userId },
   });
 
   return {
