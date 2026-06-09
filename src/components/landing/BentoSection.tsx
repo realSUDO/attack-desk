@@ -27,7 +27,7 @@ export function BentoSection() {
       <div className="mx-auto max-w-[1440px] px-4 md:px-12">
         <div className="mb-16 flex flex-col items-end justify-between gap-6 md:flex-row">
           <div className="max-w-xl">
-            <span className="font-label-sm text-label-sm text-secondary mb-4 block uppercase tracking-[0.2em]">
+            <span className="font-label-sm text-label-sm text-primary mb-4 block uppercase tracking-[0.2em]">
               The Methodology
             </span>
             <h2 className="font-headline-lg text-headline-lg text-primary">

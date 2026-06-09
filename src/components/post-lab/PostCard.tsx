@@ -75,7 +75,7 @@ export function PostCard({ post, onSelect }: Props) {
       aria-label={`Edit ${post.title}`}
     >
       {post.category && (
-        <span className="font-label-sm text-on-secondary-container bg-secondary-container px-sm py-xs mb-sm inline-block">
+        <span className="font-label-sm text-on-surface-variant bg-surface-container-highest px-sm py-xs mb-sm inline-block">
           {post.category}
         </span>
       )}

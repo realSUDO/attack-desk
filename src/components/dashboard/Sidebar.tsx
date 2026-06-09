@@ -48,7 +48,7 @@ export function Sidebar() {
                 href={href}
                 className={`group flex h-16 w-full flex-col items-center justify-center transition-colors duration-200 ${
                   active
-                    ? "border-primary text-primary bg-surface-container-high scale-95 border-l-2 transition-transform"
+                    ? "border-l-2 border-primary text-primary bg-primary/10"
                     : "text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface"
                 }`}
               >

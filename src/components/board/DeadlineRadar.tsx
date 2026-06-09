@@ -56,7 +56,7 @@ const formatUpcoming = (d: Date) =>
     .toUpperCase();
 
 const groupHeaderClass = {
-  today: "font-label-sm text-on-secondary-container bg-secondary-container/20 border-secondary border-l-2 px-sm py-1",
+  today: "font-label-sm text-primary bg-primary/10 border-primary border-l-2 px-sm py-1",
   week: "font-label-sm text-on-surface-variant border-outline-variant border-l-2 px-sm py-1",
   upcoming:
     "font-label-sm text-on-surface-variant border-outline-variant border-l-2 px-sm py-1",

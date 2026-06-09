@@ -97,7 +97,7 @@ export default async function DashboardPage() {
                   <span className="font-metadata text-metadata text-on-surface-variant block uppercase">
                     Status
                   </span>
-                  <span className="font-label-md text-label-md text-secondary">
+                  <span className="font-label-md text-label-md text-primary">
                     {focusStatus}
                   </span>
                 </div>

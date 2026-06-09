@@ -15,12 +15,12 @@ export type BoardMission = {
 
 const priorityStyles: Record<
   BoardMission["priority"],
-  { label: string; tone: "muted" | "primary" }
+  { label: string; className: string }
 > = {
-  CRITICAL: { label: "PRIORITY: CRITICAL", tone: "primary" },
-  HIGH: { label: "PRIORITY: HIGH", tone: "muted" },
-  MEDIUM: { label: "PRIORITY: MED", tone: "muted" },
-  LOW: { label: "PRIORITY: LOW", tone: "muted" },
+  CRITICAL: { label: "PRIORITY: CRITICAL", className: "bg-[#ff9166] text-[#0a0a0a]" },
+  HIGH:     { label: "PRIORITY: HIGH",     className: "bg-error-container text-on-error-container" },
+  MEDIUM:   { label: "PRIORITY: MED",      className: "bg-surface-container-highest text-on-surface-variant" },
+  LOW:      { label: "PRIORITY: LOW",      className: "bg-surface-container-highest text-on-surface-variant" },
 };
 
 const dueDateLabel = (due: Date | null): string => {
@@ -68,17 +68,11 @@ export const MissionCard = memo(function MissionCard({ mission, onSelect }: Prop
         isDoing ? "border-l-primary border-l-4" : ""
       } ${isDone ? "opacity-60 grayscale" : ""}`}
     >
-      <div className="flex items-start justify-between">
-        {style.tone === "primary" ? (
-          <span className="mono-label text-primary bg-secondary-container px-xs text-[10px] font-bold">
-            {style.label}
-          </span>
-        ) : (
-          <span className="mono-label text-on-surface-variant bg-surface-container-highest px-xs text-[10px]">
-            {style.label}
-          </span>
-        )}
-        <MaterialIcon name="edit" size={14} />
+      <div className="flex items-start justify-between gap-sm">
+        <span className={`mono-label px-xs text-[10px] font-bold ${style.className}`}>
+          {style.label}
+        </span>
+        <MaterialIcon name="edit" size={14} className="shrink-0 text-on-surface-variant" />
       </div>
       <h3
         className={`font-headline-md text-sm font-bold ${
