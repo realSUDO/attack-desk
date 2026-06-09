@@ -73,7 +73,7 @@ export async function sendVerificationEmail(
   }
 
   const { data, error } = await resend.emails.send({
-    from: "AttackDesk <verify@attack.sudohq.me>",
+    from: "AttackDesk <verify@mail.sudohq.me>",
     to: email,
     subject: "Verify your AttackDesk email",
     html: buildVerificationEmailHtml(name, token),
