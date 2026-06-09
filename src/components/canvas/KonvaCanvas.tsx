@@ -924,6 +924,8 @@ export function KonvaCanvas({
 
     let initialDist = 0;
     let initialZoom = 1;
+    let midX = 0;
+    let midY = 0;
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
@@ -934,6 +936,8 @@ export function KonvaCanvas({
         const t2 = e.touches[1]!;
         initialDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         initialZoom = stage.scaleX();
+        midX = (t1.clientX + t2.clientX) / 2;
+        midY = (t1.clientY + t2.clientY) / 2;
       }
     };
 
@@ -942,49 +946,46 @@ export function KonvaCanvas({
         e.preventDefault();
         const stage = stageRef.current;
         if (!stage || initialDist === 0) return;
-        const rect = container.getBoundingClientRect();
         const t1 = e.touches[0]!;
         const t2 = e.touches[1]!;
         const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, initialZoom * (dist / initialDist)));
 
-        const cx = (t1.clientX + t2.clientX) / 2 - rect.left;
-        const cy = (t1.clientY + t2.clientY) / 2 - rect.top;
-        const oldZoom = stage.scaleX();
-
-        const worldX = (cx - stage.x()) / oldZoom;
-        const worldY = (cy - stage.y()) / oldZoom;
+        const worldUnderPointer = {
+          x: (midX - stage.x()) / initialZoom,
+          y: (midY - stage.y()) / initialZoom,
+        };
 
         stage.position({
-          x: cx - worldX * newZoom,
-          y: cy - worldY * newZoom,
+          x: midX - worldUnderPointer.x * newZoom,
+          y: midY - worldUnderPointer.y * newZoom,
         });
         stage.scale({ x: newZoom, y: newZoom });
         stage.batchDraw();
 
-        container.style.backgroundSize = `${GRID_SIZE * newZoom}px ${GRID_SIZE * newZoom}px`;
-        container.style.backgroundPosition = `${stage.x()}px ${stage.y()}px`;
+        const c = container;
+        c.style.backgroundSize = `${GRID_SIZE * newZoom}px ${GRID_SIZE * newZoom}px`;
+        c.style.backgroundPosition = `${stage.x()}px ${stage.y()}px`;
       }
     };
 
-    const onTouchEnd = () => {
-      if (initialDist === 0) return;
-      const stage = stageRef.current;
-      if (stage) {
-        setCamera({ x: stage.x(), y: stage.y(), zoom: stage.scaleX() });
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        const stage = stageRef.current;
+        if (stage) {
+          setCamera({ x: stage.x(), y: stage.y(), zoom: stage.scaleX() });
+        }
+        initialDist = 0;
       }
-      initialDist = 0;
     };
 
     container.addEventListener("touchstart", onTouchStart, { passive: false });
     container.addEventListener("touchmove", onTouchMove, { passive: false });
     container.addEventListener("touchend", onTouchEnd);
-    container.addEventListener("touchcancel", onTouchEnd);
     return () => {
       container.removeEventListener("touchstart", onTouchStart);
       container.removeEventListener("touchmove", onTouchMove);
       container.removeEventListener("touchend", onTouchEnd);
-      container.removeEventListener("touchcancel", onTouchEnd);
     };
   }, [containerRef, stageRef, setCamera]);
 
