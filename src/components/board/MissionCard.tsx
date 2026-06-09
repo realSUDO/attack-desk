@@ -64,9 +64,9 @@ export const MissionCard = memo(function MissionCard({ mission, onSelect }: Prop
           onSelect(mission.id);
         }
       }}
-      className={`mission-card bg-surface-container-low border border-outline-variant hover:border-primary p-md flex cursor-grab active:cursor-grabbing flex-col gap-sm transition-all duration-200 ${
-        isDoing ? "border-l-primary border-l-4" : ""
-      } ${isDone ? "opacity-60 grayscale" : ""}`}
+      className={`bg-surface-container-low border border-outline-variant hover:border-primary p-md flex cursor-grab active:cursor-grabbing flex-col gap-sm transition-all duration-200 ${
+        isDoing ? "border-l-4 border-l-primary" : "border-l-4 border-l-transparent"
+      } ${isDone ? "opacity-50" : ""}`}
     >
       <div className="flex items-start justify-between gap-sm">
         <span className={`mono-label px-xs text-[10px] font-bold ${style.className}`}>

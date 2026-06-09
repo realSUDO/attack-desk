@@ -15,11 +15,12 @@ export type BoardPost = {
 export const POST_STATUSES: ReadonlyArray<{
   status: PostStatus;
   title: string;
+  color: string;
 }> = [
-  { status: "IDEA", title: "Ideas" },
-  { status: "DRAFTING", title: "Drafting" },
-  { status: "READY", title: "Ready" },
-  { status: "POSTED", title: "Posted" },
+  { status: "IDEA",     title: "Ideas",    color: "#888" },
+  { status: "DRAFTING", title: "Drafting", color: "#5b8af5" },
+  { status: "READY",    title: "Ready",    color: "#f5a623" },
+  { status: "POSTED",   title: "Posted",   color: "#4caf7d" },
 ];
 
 export const POST_CATEGORIES: ReadonlyArray<string> = [
@@ -54,9 +55,10 @@ function excerpt(post: BoardPost, maxLen = 140): string {
 type Props = {
   post: BoardPost;
   onSelect: (id: string) => void;
+  accentColor?: string;
 };
 
-export function PostCard({ post, onSelect }: Props) {
+export function PostCard({ post, onSelect, accentColor }: Props) {
   const text = excerpt(post);
   const isPosted = post.status === "POSTED";
 
@@ -71,26 +73,31 @@ export function PostCard({ post, onSelect }: Props) {
           onSelect(post.id);
         }
       }}
-      className="mission-card bg-surface p-md border border-outline-variant hover:border-primary focus:border-primary focus:outline-hidden cursor-pointer transition-colors"
+      style={accentColor ? { borderLeftColor: accentColor } : undefined}
+      className="bg-surface-container border border-outline-variant border-l-4 hover:border-primary hover:bg-surface-container-high focus:border-primary focus:outline-hidden cursor-pointer transition-colors p-md"
       aria-label={`Edit ${post.title}`}
     >
       {post.category && (
-        <span className="font-label-sm text-on-surface-variant bg-surface-container-highest px-sm py-xs mb-sm inline-block">
+        <span className="font-label-sm text-on-surface bg-surface-container-highest px-sm py-xs mb-sm inline-block text-[10px] uppercase tracking-wider">
           {post.category}
         </span>
       )}
-      <h3 className="font-headline-md text-headline-md mb-sm">{post.title}</h3>
-      <p className="font-body-md text-on-surface-variant line-clamp-2 mb-sm">
-        {text}
-      </p>
-      {isPosted && (
-        <span
-          suppressHydrationWarning
-          className="font-metadata text-on-surface-variant text-[10px] uppercase"
-        >
-          {relativeTime(post.updatedAt)}
-        </span>
+      <h3 className="font-headline-md text-headline-md mb-xs font-bold leading-snug">{post.title}</h3>
+      {text && (
+        <p className="text-on-surface-variant line-clamp-2 mb-sm text-sm leading-relaxed">
+          {text}
+        </p>
       )}
+      <div className="flex items-center justify-between mt-sm">
+        {post.postedUrl ? (
+          <span className="font-metadata text-[10px] text-primary uppercase">↗ Published</span>
+        ) : <span />}
+        {isPosted && (
+          <span suppressHydrationWarning className="font-metadata text-on-surface-variant text-[10px] uppercase">
+            {relativeTime(post.updatedAt)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

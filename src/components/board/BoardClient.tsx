@@ -63,7 +63,13 @@ const SortableCard = memo(function SortableCard({
   );
 });
 
-const DroppableColumn = memo(function DroppableColumn({
+const STATUS_META: Record<string, { color: string; dot: string }> = {
+  PLANNED: { color: "text-on-surface-variant", dot: "bg-outline" },
+  DOING:   { color: "text-primary",            dot: "bg-primary" },
+  DONE:    { color: "text-on-surface-variant", dot: "bg-[#4caf7d]" },
+};
+
+const DroppableColumn = memo(function DroppableColumnInner({
   status,
   isOver,
   count,
@@ -77,16 +83,23 @@ const DroppableColumn = memo(function DroppableColumn({
   children: React.ReactNode;
 }) {
   const { setNodeRef } = useSortable({ id: status, data: { type: "column" } });
+  const meta = STATUS_META[status] ?? { color: "text-on-surface-variant", dot: "bg-outline" };
   return (
     <div
       ref={setNodeRef}
       className={`flex w-80 flex-col gap-md rounded transition-colors duration-150 ${isOver ? "bg-surface-container" : ""}`}
     >
       <div className="border-outline-variant flex items-center justify-between border-b pb-sm">
-        <span className="mono-label font-label-md">
-          {status} ({String(count).padStart(2, "0")})
-        </span>
-        <button type="button" onClick={onAdd} aria-label={`Add ${status.toLowerCase()} mission`}>
+        <div className="flex items-center gap-sm">
+          <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+          <span className={`mono-label font-label-md ${meta.color}`}>
+            {status}
+          </span>
+          <span className="font-metadata text-on-surface-variant text-[11px]">
+            {String(count).padStart(2, "0")}
+          </span>
+        </div>
+        <button type="button" onClick={onAdd} aria-label={`Add ${status.toLowerCase()} mission`} className="text-on-surface-variant hover:text-primary transition-colors">
           <MaterialIcon name="add" size={18} />
         </button>
       </div>

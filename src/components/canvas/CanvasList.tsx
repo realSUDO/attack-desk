@@ -117,37 +117,43 @@ export function CanvasList({ canvases }: Props) {
             <Link
               key={c.id}
               href={`/canvas/${c.id}`}
-              className="border-outline-variant bg-surface hover:border-primary group block border p-md transition-colors"
+              className="border-outline-variant bg-surface-container-low hover:border-primary hover:bg-surface-container group block border border-l-4 border-l-outline p-md transition-all hover:border-l-primary"
             >
+              {/* Thumbnail strip */}
+              <div className="bg-surface-container-highest mb-md flex h-16 items-center justify-center overflow-hidden border border-outline-variant group-hover:border-primary/30">
+                <MaterialIcon name="auto_fix_high" size={24} className="text-on-surface-variant group-hover:text-primary opacity-40 transition-colors" />
+              </div>
               <div className="mb-sm flex items-start justify-between">
-                <h3 className="font-headline-md text-headline-md font-bold">
+                <h3 className="font-headline-md text-headline-md font-bold leading-snug">
                   {c.title}
                 </h3>
                 <MaterialIcon
                   name="arrow_forward"
                   size={18}
-                  className="text-on-surface-variant group-hover:text-primary"
+                  className="text-on-surface-variant group-hover:text-primary mt-0.5 shrink-0 transition-colors"
                 />
               </div>
               {c.description && (
-                <p className="text-on-surface-variant font-body-md mb-md line-clamp-2">
+                <p className="text-on-surface-variant font-body-md mb-md line-clamp-2 text-sm">
                   {c.description}
                 </p>
               )}
-              <div className="text-on-surface-variant font-metadata text-metadata flex items-center gap-md">
-                {c.missionCount > 0 && (
-                  <span className="flex items-center gap-xs">
-                    <MaterialIcon name="assignment" size={14} />
-                    {c.missionCount} mission{c.missionCount !== 1 ? "s" : ""}
-                  </span>
-                )}
-                {c.postIdeaCount > 0 && (
-                  <span className="flex items-center gap-xs">
-                    <MaterialIcon name="edit_note" size={14} />
-                    {c.postIdeaCount} idea{c.postIdeaCount !== 1 ? "s" : ""}
-                  </span>
-                )}
-                <span suppressHydrationWarning className="ml-auto">
+              <div className="border-outline-variant mt-md flex items-center gap-md border-t pt-sm">
+                <div className="text-on-surface-variant font-metadata text-metadata flex flex-1 items-center gap-md">
+                  {c.missionCount > 0 && (
+                    <span className="flex items-center gap-xs">
+                      <MaterialIcon name="assignment" size={13} />
+                      {c.missionCount}
+                    </span>
+                  )}
+                  {c.postIdeaCount > 0 && (
+                    <span className="flex items-center gap-xs">
+                      <MaterialIcon name="edit_note" size={13} />
+                      {c.postIdeaCount}
+                    </span>
+                  )}
+                </div>
+                <span suppressHydrationWarning className="font-metadata text-metadata text-on-surface-variant">
                   {formatRelative(c.updatedAt)}
                 </span>
               </div>

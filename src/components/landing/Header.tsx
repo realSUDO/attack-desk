@@ -19,12 +19,6 @@ export function Header() {
           Manifesto
         </Link>
         <Link
-          href="#pricing"
-          className="font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
-        >
-          Pricing
-        </Link>
-        <Link
           href="/dashboard"
           className="border border-[#ff9166] bg-[#ff9166] px-4 py-2 font-label-md text-label-md text-[#0d0d0d] shadow-[2px_2px_0px_#0d0d0d] transition-all duration-200 hover:bg-transparent hover:text-[#ff9166] hover:shadow-none"
         >

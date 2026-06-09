@@ -158,7 +158,7 @@ export default async function DashboardPage() {
               <div className="bg-outline-variant/50 h-px" />
               <div className="flex items-center justify-between">
                 <span className="font-label-md text-label-md">DOING</span>
-                <span className="font-display text-headline-md text-on-secondary-container">
+                <span className="font-display text-headline-md text-primary">
                   {String(missions.doing).padStart(2, "0")}
                 </span>
               </div>
