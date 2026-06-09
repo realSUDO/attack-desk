@@ -969,7 +969,7 @@ export function KonvaCanvas({
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden overscroll-none"
+      className="relative h-full w-full overflow-hidden overscroll-none touch-none"
       style={stageStyle}
     >
       <Stage

@@ -46,14 +46,16 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Hamburger — mobile only */}
+      {/* Sidebar toggle tab — mobile only */}
       <button
         type="button"
-        aria-label="Toggle navigation"
+        aria-label={open ? "Close navigation" : "Open navigation"}
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-4 left-4 z-[70] flex h-10 w-10 items-center justify-center rounded-full border border-outline-variant bg-surface-container shadow-lg md:hidden"
+        className={`fixed left-0 top-1/2 z-[70] -translate-y-1/2 flex h-20 w-[18px] items-center justify-center rounded-r-sm border border-l-0 border-outline-variant bg-surface-container shadow-sm transition-colors hover:bg-surface-container-higher md:hidden ${
+          open ? "hidden" : ""
+        }`}
       >
-        <MaterialIcon name="menu" size={20} />
+        <MaterialIcon name="chevron_right" size={14} />
       </button>
 
       {/* Backdrop — mobile only */}
