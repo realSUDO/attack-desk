@@ -929,16 +929,15 @@ export function KonvaCanvas({
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
+        e.preventDefault();
         const stage = stageRef.current;
         if (!stage) return;
-        const rect = container.getBoundingClientRect();
         const t1 = e.touches[0]!;
         const t2 = e.touches[1]!;
         initialDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         initialZoom = stage.scaleX();
-        midX = (t1.clientX + t2.clientX) / 2 - rect.left;
-        midY = (t1.clientY + t2.clientY) / 2 - rect.top;
-        e.preventDefault();
+        midX = (t1.clientX + t2.clientX) / 2;
+        midY = (t1.clientY + t2.clientY) / 2;
       }
     };
 
@@ -947,7 +946,6 @@ export function KonvaCanvas({
         e.preventDefault();
         const stage = stageRef.current;
         if (!stage || initialDist === 0) return;
-        const rect = container.getBoundingClientRect();
         const t1 = e.touches[0]!;
         const t2 = e.touches[1]!;
         const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
@@ -971,12 +969,14 @@ export function KonvaCanvas({
       }
     };
 
-    const onTouchEnd = () => {
-      const stage = stageRef.current;
-      if (stage) {
-        setCamera({ x: stage.x(), y: stage.y(), zoom: stage.scaleX() });
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        const stage = stageRef.current;
+        if (stage) {
+          setCamera({ x: stage.x(), y: stage.y(), zoom: stage.scaleX() });
+        }
+        initialDist = 0;
       }
-      initialDist = 0;
     };
 
     container.addEventListener("touchstart", onTouchStart, { passive: false });
