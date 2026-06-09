@@ -46,19 +46,6 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Sidebar toggle tab — mobile only */}
-      <button
-        type="button"
-        aria-label={open ? "Close navigation" : "Open navigation"}
-        onClick={() => setOpen((v) => !v)}
-        className={`fixed left-0 top-1/2 z-[70] -translate-y-1/2 flex h-28 w-[26px] items-center justify-center rounded-r-sm border border-l-0 border-outline-variant bg-surface-container shadow-sm transition-colors hover:bg-surface-container-higher md:hidden ${
-          open ? "hidden" : ""
-        }`}
-        style={{ clipPath: "polygon(0% 12%, 100% 0%, 100% 100%, 0% 88%)" }}
-      >
-        <MaterialIcon name="chevron_right" size={16} />
-      </button>
-
       {/* Backdrop — mobile only */}
       {open && (
         <div
@@ -154,6 +141,17 @@ export function Sidebar() {
             </Link>
           </div>
         )}
+
+        {/* Sidebar toggle tab — mobile only, slides with the sidebar */}
+        <button
+          type="button"
+          aria-label={open ? "Close navigation" : "Open navigation"}
+          onClick={() => setOpen((v) => !v)}
+          className="absolute left-full top-1/2 -translate-y-1/2 z-10 flex h-28 w-[26px] items-center justify-center border border-l-0 border-outline-variant bg-surface-container shadow-sm transition-colors hover:bg-surface-container-higher md:hidden"
+          style={{ clipPath: "polygon(0% 0%, 100% 15%, 100% 85%, 0% 100%)" }}
+        >
+          <MaterialIcon name={open ? "chevron_left" : "chevron_right"} size={16} />
+        </button>
       </aside>
     </>
   );
