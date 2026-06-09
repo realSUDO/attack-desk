@@ -6,12 +6,13 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
 
 import { Sidebar } from "@/components/dashboard/Sidebar";
-import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
+import Konva from "konva";
 import {
   deleteCanvasAction,
   unlinkMissionFromCanvasAction,
@@ -30,8 +31,6 @@ import {
   type Tool,
   type ToolDefaults,
   DEFAULT_TOOL_DEFAULTS,
-  MAX_ZOOM,
-  MIN_ZOOM,
 } from "./types";
 
 type LinkedRef = {
@@ -56,6 +55,7 @@ type Props = {
 
 const TOOL_KEYBINDS: Record<string, Tool> = {
   v: "select",
+  s: "select",
   h: "pan",
   p: "pen",
   r: "rect",
@@ -67,7 +67,7 @@ const TOOL_KEYBINDS: Record<string, Tool> = {
 
 type TextEditorShape = Pick<
   TextShape,
-  "id" | "x" | "y" | "text" | "fontSize" | "width" | "align"
+  "id" | "x" | "y" | "text" | "fontSize" | "width" | "align" | "stroke"
 >;
 
 export function CanvasPage({
@@ -89,6 +89,9 @@ export function CanvasPage({
   const [textEditor, setTextEditor] = useState<{
     shape: TextEditorShape;
     isNew: boolean;
+    cameraX: number;
+    cameraY: number;
+    zoom: number;
   } | null>(null);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [isDeleting, startDelete] = useTransition();
@@ -103,6 +106,7 @@ export function CanvasPage({
     | null
   >(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<Konva.Stage | null>(null);
   const saveSequenceRef = useRef(0);
 
   const selectedShapes = useMemo<ReadonlyArray<Shape>>(() => {
@@ -152,25 +156,41 @@ export function CanvasPage({
     return () => clearTimeout(t);
   }, [isDirty, handleSave]);
 
+  const handleDrawingEnd = useCallback(() => {
+    setTool("select");
+  }, []);
+
   const handleRequestTextEdit = useCallback(
     (shape: TextEditorShape, isNew = false) => {
       setSelectedIds([shape.id]);
-      setTextEditor({ shape, isNew });
+      setTextEditor({
+        shape,
+        isNew,
+        cameraX: api.scene.camera.x,
+        cameraY: api.scene.camera.y,
+        zoom: api.scene.camera.zoom,
+      });
     },
-    [],
+    [api.scene.camera],
   );
 
   const handleCreateText = useCallback(
     (clientX: number, clientY: number) => {
       const container = containerRef.current;
-      if (!container) return;
+      const stage = stageRef.current;
+      if (!container || !stage) return;
       const bounds = container.getBoundingClientRect();
+      const camera = {
+        x: stage.x(),
+        y: stage.y(),
+        zoom: stage.scaleX(),
+      };
       const x =
-        (clientX - bounds.left - api.scene.camera.x) /
-        api.scene.camera.zoom;
+        (clientX - bounds.left - camera.x) /
+        camera.zoom;
       const y =
-        (clientY - bounds.top - api.scene.camera.y) /
-        api.scene.camera.zoom;
+        (clientY - bounds.top - camera.y) /
+        camera.zoom;
       const textShape = {
         type: "text" as const,
         x,
@@ -183,16 +203,21 @@ export function CanvasPage({
         strokeWidth: 0,
         text: "",
         fontSize: toolDefaults.fontSize,
-        width: 200,
         align: toolDefaults.textAlign,
       };
       const id = api.addShape(textShape);
-      handleRequestTextEdit({ ...textShape, id }, true);
+      setTextEditor({
+        shape: { ...textShape, id },
+        isNew: true,
+        cameraX: camera.x,
+        cameraY: camera.y,
+        zoom: camera.zoom,
+      });
+      setSelectedIds([id]);
       setTool("select");
     },
     [
       api,
-      handleRequestTextEdit,
       toolDefaults.fontSize,
       toolDefaults.stroke,
       toolDefaults.textAlign,
@@ -206,13 +231,17 @@ export function CanvasPage({
       if (trimmed === "") {
         api.removeShapes([textEditor.shape.id]);
         setSelectedIds([]);
-      } else if (trimmed !== textEditor.shape.text) {
-        const update = textEditor.isNew
-          ? api.updateShapeTransient
-          : api.updateShape;
-        update(textEditor.shape.id, { text: trimmed });
+      } else {
+        if (trimmed !== textEditor.shape.text) {
+          const update = textEditor.isNew
+            ? api.updateShapeTransient
+            : api.updateShape;
+          update(textEditor.shape.id, { text: trimmed });
+        }
+        setSelectedIds([textEditor.shape.id]);
       }
       setTextEditor(null);
+      setTool("select");
     },
     [api, textEditor],
   );
@@ -438,7 +467,9 @@ export function CanvasPage({
               onRequestTextEdit={handleRequestTextEdit}
               onContextMenuEvent={handleShowContextMenu}
               containerRef={containerRef}
+              stageRef={stageRef}
               editingTextId={textEditor?.shape.id ?? null}
+              onDrawingEnd={handleDrawingEnd}
             />
 
             {tool === "text" && !textEditor && (
@@ -457,35 +488,13 @@ export function CanvasPage({
               <TextEditorOverlay
                 key={textEditor.shape.id}
                 shape={textEditor.shape}
-                zoom={api.scene.camera.zoom}
-                cameraX={api.scene.camera.x}
-                cameraY={api.scene.camera.y}
+                zoom={textEditor.zoom}
+                cameraX={textEditor.cameraX}
+                cameraY={textEditor.cameraY}
                 onCommit={commitTextEdit}
               />
             )}
 
-            <div className="absolute bottom-lg left-lg z-40">
-              <div className="border-outline-variant bg-surface-container-lowest flex items-center gap-sm border px-md py-sm">
-                <MaterialIcon
-                  name="cloud_done"
-                  size={18}
-                  filled
-                  className="text-secondary"
-                />
-                <span className="font-metadata text-metadata text-on-surface-variant">
-                  {isSaving
-                    ? "Saving…"
-                    : isDirty
-                      ? "Unsaved changes"
-                      : "Saved to Cloud"}
-                </span>
-              </div>
-            </div>
-
-            <ZoomControls
-              zoom={api.scene.camera.zoom}
-              onZoom={(z) => api.setCamera({ zoom: z })}
-            />
           </div>
 
           <CanvasInspector
@@ -576,38 +585,6 @@ export function CanvasPage({
   );
 }
 
-function ZoomControls({
-  zoom,
-  onZoom,
-}: {
-  zoom: number;
-  onZoom: (z: number) => void;
-}) {
-  return (
-    <div className="border-outline-variant bg-surface absolute bottom-lg left-1/2 z-40 flex -translate-x-1/2 overflow-hidden border">
-      <button
-        type="button"
-        onClick={() => onZoom(Math.max(MIN_ZOOM, zoom * 0.8))}
-        className="hover:bg-surface-container-highest border-outline-variant flex h-10 w-10 items-center justify-center border-r"
-        aria-label="Zoom out"
-      >
-        <MaterialIcon name="remove" size={18} />
-      </button>
-      <div className="bg-surface-container flex min-w-[60px] items-center justify-center px-md font-label-md">
-        {Math.round(zoom * 100)}%
-      </div>
-      <button
-        type="button"
-        onClick={() => onZoom(Math.min(MAX_ZOOM, zoom * 1.25))}
-        className="hover:bg-surface-container-highest border-outline-variant flex h-10 w-10 items-center justify-center border-l"
-        aria-label="Zoom in"
-      >
-        <MaterialIcon name="add" size={18} />
-      </button>
-    </div>
-  );
-}
-
 function TextEditorOverlay({
   shape,
   zoom,
@@ -623,6 +600,7 @@ function TextEditorOverlay({
     fontSize: number;
     width?: number;
     align?: TextShape["align"];
+    stroke?: string;
   };
   zoom: number;
   cameraX: number;
@@ -631,6 +609,12 @@ function TextEditorOverlay({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState(shape.text);
+  const isDark = useSyncExternalStore(
+    (cb) => { const obs = new MutationObserver(cb); obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] }); return () => obs.disconnect(); },
+    () => document.documentElement.classList.contains("dark"),
+    () => false,
+  );
+  const textColor = isDark ? "#f0ede8" : "#1e1b15";
   useEffect(() => {
     if (ref.current) {
       ref.current.focus();
@@ -670,8 +654,8 @@ function TextEditorOverlay({
         width: `${(shape.width ?? 200) * zoom}px`,
         minWidth: "160px",
         minHeight: `${shape.fontSize * zoom * 1.4}px`,
-        color: "#1e1b15",
-        caretColor: "#1e1b15",
+        color: textColor,
+        caretColor: textColor,
         fontFamily: "var(--font-schoolbell), cursive",
         fontWeight: 400,
         textAlign: shape.align ?? "left",

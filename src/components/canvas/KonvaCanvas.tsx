@@ -52,7 +52,7 @@ type Props = {
   onRequestTextEdit: (
     shape: Pick<
       TextShape,
-      "id" | "x" | "y" | "text" | "fontSize" | "width" | "align"
+      "id" | "x" | "y" | "text" | "fontSize" | "width" | "align" | "stroke"
     >,
     isNew?: boolean,
   ) => void;
@@ -61,7 +61,9 @@ type Props = {
     ids: ReadonlyArray<string>,
   ) => void;
   containerRef: RefObject<HTMLDivElement | null>;
+  stageRef: RefObject<Konva.Stage | null>;
   editingTextId: string | null;
+  onDrawingEnd?: () => void;
 };
 
 const GRID_SIZE = 24;
@@ -108,19 +110,24 @@ export function KonvaCanvas({
   onRequestTextEdit,
   onContextMenuEvent,
   containerRef,
+  stageRef,
   editingTextId,
+  onDrawingEnd,
 }: Props) {
   const { scene } = api;
   const setCamera = api.setCamera;
   const updateShape = api.updateShape;
   const [stageSize, setStageSize] = useState({ w: 1, h: 1 });
-  const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef<Map<string, KonvaNode>>(new Map());
   const cameraCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const transformAnchorRef = useRef<string | null>(null);
+
+  // Tracks whether eraser button is held so we only erase on click/drag,
+  // not on hover.
+  const isErasingRef = useRef(false);
 
   // Live pen/rect/ellipse/arrow state lives in refs so high-frequency
   // pointermove events do not cause React re-renders.
@@ -293,7 +300,8 @@ export function KonvaCanvas({
     if (!live) return;
     api.updateShapeTransient(live.id, { points: live.points.slice() });
     livePenRef.current = null;
-  }, [api]);
+    onDrawingEnd?.();
+  }, [api, onDrawingEnd]);
 
   const beginRect = useCallback(
     (wx: number, wy: number) => {
@@ -391,7 +399,8 @@ export function KonvaCanvas({
       height: live.height,
     });
     liveRectRef.current = null;
-  }, [api]);
+    onDrawingEnd?.();
+  }, [api, onDrawingEnd]);
 
   const beginArrow = useCallback(
     (wx: number, wy: number) => {
@@ -444,12 +453,14 @@ export function KonvaCanvas({
     api.updateShapeTransient(live.id, { points: live.points.slice() });
     liveArrowRef.current = null;
     setMagnetTarget(null);
-  }, [api]);
+    onDrawingEnd?.();
+  }, [api, onDrawingEnd]);
 
   const eraserTolerance = ERASER_TOLERANCE_SCREEN_PX / scene.camera.zoom;
 
   const beginErase = useCallback(
     (wx: number, wy: number) => {
+      isErasingRef.current = true;
       const hit = hitTopShape(wx, wy, eraserTolerance);
       if (hit) api.removeShapes([hit.id]);
     },
@@ -458,6 +469,7 @@ export function KonvaCanvas({
 
   const extendErase = useCallback(
     (wx: number, wy: number) => {
+      if (!isErasingRef.current) return;
       const hits: Array<string> = [];
       for (const s of orderedShapes) {
         if (hitShapeExpanded(s, wx, wy, eraserTolerance)) hits.push(s.id);
@@ -466,6 +478,10 @@ export function KonvaCanvas({
     },
     [api, orderedShapes, eraserTolerance],
   );
+
+  const endErase = useCallback(() => {
+    isErasingRef.current = false;
+  }, []);
 
   // Pan via stage drag (pan tool).
   useEffect(() => {
@@ -655,11 +671,13 @@ export function KonvaCanvas({
       if (livePenRef.current) endPen();
       if (liveRectRef.current) endRect();
       if (liveArrowRef.current) endArrow();
+      if (isErasingRef.current) endErase();
     },
     [
       endPen,
       endRect,
       endArrow,
+      endErase,
       orderedShapes,
       setSelectedIds,
       setCamera,
