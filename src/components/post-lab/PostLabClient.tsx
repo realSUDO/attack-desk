@@ -208,14 +208,14 @@ export function PostLabClient({ databaseAvailable }: Props) {
   return (
     <>
       <header className="bg-background border-outline-variant fixed top-0 right-0 left-0 z-40 flex h-16 items-center justify-between border-b px-margin-mobile md:left-20 md:px-margin-desktop">
-        <div className="flex items-center gap-sm md:gap-lg">
-          <h1 className="hidden font-headline-md text-primary font-bold md:block">Content Lab</h1>
-          <div className="border-outline-variant bg-surface-container flex items-center border px-sm py-xs md:px-md">
+        <div className="flex items-center gap-sm md:gap-lg min-w-0">
+          <h1 className="font-headline-md text-primary font-bold shrink-0">Content Lab</h1>
+          <div className="border-outline-variant bg-surface-container flex items-center border px-sm py-xs md:px-md shrink-0">
             <MaterialIcon name="search" size={16} />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="font-label-md w-24 border-none bg-transparent outline-none md:w-64" />
           </div>
         </div>
-        <button type="button" onClick={() => setIsCreating(true)} className="bg-primary text-on-primary px-md py-[3px] text-[11px] font-label-md uppercase md:px-lg md:py-sm md:text-label-md">New</button>
+        <button type="button" onClick={() => setIsCreating(true)} className="bg-primary text-on-primary px-md py-[3px] text-[11px] font-label-md uppercase md:px-lg md:py-sm md:text-label-md shrink-0">New Post</button>
       </header>
 
       <main ref={scrollRef} className="board-scroll bg-background ml-0 mt-16 flex h-[calc(100vh-64px)] overflow-x-auto overflow-y-hidden p-lg md:ml-20">

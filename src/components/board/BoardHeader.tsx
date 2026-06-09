@@ -14,7 +14,7 @@ export function BoardHeader({ search, onSearchChange, onCreate }: Props) {
   return (
     <header className="border-outline-variant bg-background fixed top-0 right-0 z-40 ml-0 flex h-16 w-full items-center justify-between border-b px-margin-mobile md:ml-20 md:w-[calc(100%-80px)] md:px-margin-desktop">
       <div className="flex items-center gap-lg">
-        <h1 className="hidden font-headline-sm text-headline-sm md:font-headline-md md:text-headline-md md:block font-extrabold text-primary">
+        <h1 className="font-headline-sm text-headline-sm md:font-headline-md md:text-headline-md font-extrabold text-primary shrink-0">
           Mission Board
         </h1>
         <div className="border-outline-variant bg-surface-container flex items-center px-sm py-xs border md:px-md">
@@ -33,13 +33,13 @@ export function BoardHeader({ search, onSearchChange, onCreate }: Props) {
         </div>
       </div>
 
-      <div className="flex items-center gap-sm md:gap-lg">
+      <div className="flex items-center gap-sm md:gap-lg shrink-0">
         <button
           type="button"
           onClick={onCreate}
           className="border-primary text-primary font-label-md hover:bg-primary hover:text-on-primary border px-md py-[3px] text-[11px] uppercase tracking-wider transition-colors md:px-lg md:py-xs md:text-label-md"
         >
-          New
+          New Mission
         </button>
 
         <Link
