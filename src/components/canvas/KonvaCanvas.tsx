@@ -531,6 +531,12 @@ export function KonvaCanvas({
           } else if (!curIds.includes(id)) {
             setSelectedIds([id], false);
           }
+        } else if (
+          isTransformerTarget(e.target) &&
+          (e.target as unknown) !== transformerRef.current
+        ) {
+          // Click on transformer anchor (resize handle) — let Konva handle it
+          return;
         } else if (isTransformerTarget(e.target) || curIds.length > 0) {
           // Click on transformer border or near selected shapes → group drag
           const pad = 20 / scene.camera.zoom;
