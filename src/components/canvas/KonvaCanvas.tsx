@@ -279,9 +279,8 @@ export function KonvaCanvas({
         origin: { x: wx, y: wy },
         points: [[0, 0, 0.5]],
       };
-      setSelectedIds([id], false);
     },
-    [api, toolDefaults, setSelectedIds],
+    [api, toolDefaults],
   );
 
   const extendPen = useCallback((wx: number, wy: number) => {
@@ -920,17 +919,19 @@ export function KonvaCanvas({
       >
         <Layer>
           {orderedShapes.map((shape) => (
-            <ShapeNode
-              key={shape.id}
-              shape={shape}
-              isDark={isDark}
-              isDraggable={tool === "select" && !isDrawing}
-              isHidden={shape.id === editingTextId}
-              registerNode={registerNode}
-              onDragEnd={onShapeDragEnd}
-              onDblClick={onShapeDblClick}
-              onHover={handleShapeHover}
-            />
+              <ShapeNode
+                key={shape.id}
+                shape={shape}
+                isDark={isDark}
+                isDraggable={tool === "select" && !isDrawing}
+                isHidden={shape.id === editingTextId}
+                registerNode={registerNode}
+                onDragEnd={onShapeDragEnd}
+                onDblClick={onShapeDblClick}
+                onHover={handleShapeHover}
+                tool={tool}
+                selectedIds={selectedIds}
+              />
           ))}
           {marquee && (
             <Rect
@@ -1094,6 +1095,8 @@ const ShapeNode = React.memo(function ShapeNode({
   onDragEnd,
   onDblClick,
   onHover,
+  tool,
+  selectedIds,
 }: {
   shape: Shape;
   isDark: boolean;
@@ -1103,6 +1106,8 @@ const ShapeNode = React.memo(function ShapeNode({
   onDragEnd: (id: string, e: KonvaEventObject<DragEvent>) => void;
   onDblClick: (shape: Shape, e: KonvaEventObject<MouseEvent>) => void;
   onHover: (hovering: boolean) => void;
+  tool: Tool;
+  selectedIds: ReadonlyArray<string>;
 }) {
   // Reset Konva scale to 1 after the store update propagates. This is
   // necessary because the Transformer applies scale to the node during
@@ -1140,6 +1145,11 @@ const ShapeNode = React.memo(function ShapeNode({
     onDblClick: (e: KonvaEventObject<MouseEvent>) => onDblClick(shape, e),
     onPointerEnter: () => onHover(true),
     onPointerLeave: () => onHover(false),
+    onPointerDown: (e: KonvaEventObject<PointerEvent>) => {
+      if (tool === "select" && selectedIds.includes(shape.id)) {
+        e.cancelBubble = true;
+      }
+    },
   };
 
   // Adapt colors for dark mode without mutating stored shape data

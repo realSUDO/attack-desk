@@ -59,6 +59,7 @@ const TOOL_KEYBINDS: Record<string, Tool> = {
   s: "select",
   h: "pan",
   p: "pen",
+  d: "pen",
   r: "rect",
   o: "ellipse",
   a: "arrow",
