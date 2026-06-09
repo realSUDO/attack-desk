@@ -87,19 +87,22 @@ const TEXT_TRANSFORMER_ANCHORS: string[] = [
   "bottom-left",
   "bottom-right",
 ];
-const TRANSFORMER_PROPS = {
-  rotateEnabled: true,
-  keepRatio: false,
-  flipEnabled: false,
-  ignoreStroke: true,
-  anchorSize: 8,
-  anchorStroke: "#1e1b15",
-  anchorFill: "#fff8f1",
-  borderStroke: "#1e1b15",
-  borderDash: [4, 4],
-  enabledAnchors: TRANSFORMER_ANCHORS,
-  strokeScaleEnabled: false,
-};
+
+function transformerProps(isDark: boolean) {
+  return {
+    rotateEnabled: true,
+    keepRatio: false,
+    flipEnabled: false,
+    ignoreStroke: true,
+    anchorSize: 8,
+    anchorStroke: isDark ? "#66b0ff" : "#1e1b15",
+    anchorFill: isDark ? "#1a1a1a" : "#fff8f1",
+    borderStroke: isDark ? "#66b0ff" : "#1e1b15",
+    borderDash: [4, 4],
+    enabledAnchors: TRANSFORMER_ANCHORS,
+    strokeScaleEnabled: false,
+  };
+}
 
 export function KonvaCanvas({
   api,
@@ -914,6 +917,79 @@ export function KonvaCanvas({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stageRef, selectedIds, shapeIds, tool, getWorldPoint, setCamera, setSelectedIds, onContextMenuEvent, containerRef]);
 
+  // Pinch-zoom on mobile — requires touch-action: none on container
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let initialDist = 0;
+    let initialZoom = 1;
+    let midX = 0;
+    let midY = 0;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const stage = stageRef.current;
+        if (!stage) return;
+        const t1 = e.touches[0]!;
+        const t2 = e.touches[1]!;
+        initialDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        initialZoom = stage.scaleX();
+        midX = (t1.clientX + t2.clientX) / 2;
+        midY = (t1.clientY + t2.clientY) / 2;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const stage = stageRef.current;
+        if (!stage || initialDist === 0) return;
+        const t1 = e.touches[0]!;
+        const t2 = e.touches[1]!;
+        const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, initialZoom * (dist / initialDist)));
+
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
+        const worldUnderPointer = {
+          x: (midX - stage.x()) / initialZoom,
+          y: (midY - stage.y()) / initialZoom,
+        };
+
+        stage.position({
+          x: midX - worldUnderPointer.x * newZoom,
+          y: midY - worldUnderPointer.y * newZoom,
+        });
+        stage.scale({ x: newZoom, y: newZoom });
+        stage.batchDraw();
+
+        const c = container;
+        c.style.backgroundSize = `${GRID_SIZE * newZoom}px ${GRID_SIZE * newZoom}px`;
+        c.style.backgroundPosition = `${stage.x()}px ${stage.y()}px`;
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        const stage = stageRef.current;
+        if (stage) {
+          setCamera({ x: stage.x(), y: stage.y(), zoom: stage.scaleX() });
+        }
+        initialDist = 0;
+      }
+    };
+
+    container.addEventListener("touchstart", onTouchStart, { passive: false });
+    container.addEventListener("touchmove", onTouchMove, { passive: false });
+    container.addEventListener("touchend", onTouchEnd);
+    return () => {
+      container.removeEventListener("touchstart", onTouchStart);
+      container.removeEventListener("touchmove", onTouchMove);
+      container.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [containerRef, stageRef, setCamera]);
 
   const onShapeDblClick = useCallback(
     (shape: Shape, e: KonvaEventObject<MouseEvent>) => {
@@ -1031,6 +1107,7 @@ export function KonvaCanvas({
           {selectedIds.length > 0 && tool === "select" && (
             <CanvasTransformer
               ref={transformerRef}
+              isDark={isDark}
               enabledAnchors={
                 selectedTextShape
                   ? TEXT_TRANSFORMER_ANCHORS
@@ -1358,6 +1435,7 @@ const CanvasTransformer = React.memo(
   React.forwardRef<
     Konva.Transformer,
     {
+      isDark: boolean;
       enabledAnchors: string[];
       keepRatio: boolean;
       minWidth: number;
@@ -1369,6 +1447,7 @@ const CanvasTransformer = React.memo(
   >(
     function CanvasTransformer(
       {
+        isDark,
         enabledAnchors,
         keepRatio,
         minWidth,
@@ -1382,7 +1461,7 @@ const CanvasTransformer = React.memo(
       return (
         <Transformer
           ref={ref}
-          {...TRANSFORMER_PROPS}
+          {...transformerProps(isDark)}
           enabledAnchors={enabledAnchors}
           keepRatio={keepRatio}
           boundBoxFunc={(oldBox, newBox) =>
