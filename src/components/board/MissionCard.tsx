@@ -43,10 +43,9 @@ const dueDateLabel = (due: Date | null): string => {
 type Props = {
   mission: BoardMission;
   onSelect: (id: string) => void;
-  onDragStart: (id: string) => void;
 };
 
-export function MissionCard({ mission, onSelect, onDragStart }: Props) {
+export function MissionCard({ mission, onSelect }: Props) {
   const style = priorityStyles[mission.priority];
   const isDoing = mission.status === "DOING";
   const isDone = mission.status === "DONE";
@@ -57,11 +56,6 @@ export function MissionCard({ mission, onSelect, onDragStart }: Props) {
     <div
       role="button"
       tabIndex={0}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        onDragStart(mission.id);
-      }}
       onClick={() => onSelect(mission.id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
