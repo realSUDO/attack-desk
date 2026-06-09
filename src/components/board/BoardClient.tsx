@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -29,10 +29,10 @@ import { MissionCard, type BoardMission } from "./MissionCard";
 import { MissionDrawer, type MissionInput } from "./MissionDrawer";
 
 type Props = {
-  initialMissions: ReadonlyArray<BoardMission>;
-  deadlines: ReadonlyArray<RadarDeadline>;
-  databaseError?: string | null;
+  databaseAvailable: boolean;
 };
+
+const CACHE_KEY = "ad:board:data";
 
 const STATUSES = ["PLANNED", "DOING", "DONE"] as const;
 
@@ -131,18 +131,67 @@ function applyOrder(missions: BoardMission[]): BoardMission[] {
 }
 
 export function BoardClient({
-  initialMissions,
-  deadlines,
-  databaseError = null,
+  databaseAvailable,
 }: Props) {
   const router = useRouter();
-  const [missions, setMissions] = useState(() => applyOrder(initialMissions.map(normalizeMission)));
+  const [missions, setMissions] = useState<BoardMission[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const m = (parsed.missions ?? []).map(normalizeMission);
+        return applyOrder(m);
+      }
+    } catch {}
+    return [];
+  });
+  const [deadlines, setDeadlines] = useState<RadarDeadline[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return (parsed.deadlines ?? []).map((d: RadarDeadline) => ({
+          ...d,
+          dueDate: new Date(d.dueDate),
+        }));
+      }
+    } catch {}
+    return [];
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createStatus, setCreateStatus] = useState<BoardMission["status"] | null>(null);
   const [search, setSearch] = useState("");
-  const [error, setError] = useState<string | null>(databaseError);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [activeMission, setActiveMission] = useState<BoardMission | null>(null);
+  const fetching = useRef(false);
+
+  const fetchData = useCallback(async () => {
+    if (fetching.current || !databaseAvailable) return;
+    fetching.current = true;
+    try {
+      const res = await fetch("/api/board/data");
+      const data = await res.json();
+      const m = (data.missions ?? []).map(normalizeMission);
+      const d = (data.deadlines ?? []).map((dl: RadarDeadline) => ({
+        ...dl,
+        dueDate: new Date(dl.dueDate),
+      }));
+      setMissions(applyOrder(m));
+      setDeadlines(d);
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+      } catch {}
+    } catch {
+      setError("Database unavailable. Start PostgreSQL and configure DATABASE_URL.");
+    } finally {
+      fetching.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
   // overStatus drives column highlight — keep as state but only set on actual column change
   const [overStatus, setOverStatus] = useState<BoardMission["status"] | null>(null);
   const overStatusRef = useRef<BoardMission["status"] | null>(null);
@@ -333,8 +382,8 @@ export function BoardClient({
       <BoardHeader search={search} onSearchChange={setSearch} onCreate={() => setCreateStatus("PLANNED")} />
       <main className="ml-20 mt-16 flex h-[calc(100vh-64px)] overflow-hidden">
         <section className="bg-background flex-1 overflow-x-auto p-lg">
-          {databaseError && (
-            <p className="border-error text-error mb-md border p-sm text-sm">{databaseError}</p>
+          {error && (
+            <p className="border-error text-error mb-md border p-sm text-sm">{error}</p>
           )}
           <DndContext
             sensors={sensors}

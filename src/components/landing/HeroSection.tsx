@@ -31,7 +31,7 @@ export function HeroSection() {
         <div className="flex flex-col gap-10 md:col-span-6">
           <div className="space-y-4">
             <h1 className="font-display text-display max-w-lg">
-              <span className="text-[#ff9166]">Attack</span><span className="text-on-surface">Desk</span>
+              <span className="text-on-surface">Attack</span><span className="text-[#ff9166]">Desk</span>
             </h1>
             <p className="font-headline-lg text-headline-lg leading-tight text-on-surface-variant">
               Plan your day. Map your ideas. Track your deadlines. Ship your
@@ -81,15 +81,15 @@ export function HeroSection() {
               <DashboardPreview />
 
               {/* Overlay UI fragments */}
-              <div className="absolute top-4 right-4 hidden w-48 -translate-x-4 translate-y-4 border border-[#1f1f1f] bg-[#111] p-4 shadow-sm transition-transform duration-500 group-hover:translate-x-0 group-hover:translate-y-0 lg:block">
+              <div className="absolute top-4 right-4 block w-48 -translate-x-4 translate-y-4 border border-[#555] bg-[#2a2a2a] p-4 shadow-lg shadow-black/40 transition-transform duration-500 group-hover:translate-x-0 group-hover:translate-y-0">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="font-label-sm text-label-sm uppercase text-[#777]">
+                  <span className="font-label-sm text-label-sm uppercase text-[#ccc]">
                     Active Mission
                   </span>
                   <span className="h-2 w-2 rounded-full bg-[#ff9166]" />
                 </div>
-                <div className="mb-1 h-1 w-full bg-[#222]" />
-                <div className="h-1 w-3/4 bg-[#222]" />
+                <div className="mb-1 h-1 w-full bg-[#555]" />
+                <div className="h-1 w-3/4 bg-[#555]" />
               </div>
 
               <div className="absolute bottom-4 left-4 hidden w-56 -translate-x-4 -translate-y-4 border border-[#ff9166] bg-[#ff9166] p-4 text-[#0d0d0d] shadow-sm transition-transform delay-75 duration-500 group-hover:translate-x-0 group-hover:translate-y-0 lg:block">

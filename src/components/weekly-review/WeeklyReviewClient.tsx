@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
@@ -22,9 +22,10 @@ type ReviewInput = Omit<ReviewItem, "id" | "weekStart" | "weekEnd"> & {
 };
 
 type Props = {
-  initialReviews: ReadonlyArray<ReviewItem>;
-  databaseError?: string | null;
+  databaseAvailable: boolean;
 };
+
+const CACHE_KEY = "ad:weekly-reviews:data";
 
 function dateValue(date: Date): string {
   return new Date(date).toISOString().slice(0, 10);
@@ -39,14 +40,45 @@ function normalize(review: ReviewItem): ReviewItem {
 }
 
 export function WeeklyReviewClient({
-  initialReviews,
-  databaseError = null,
+  databaseAvailable,
 }: Props) {
   const router = useRouter();
-  const [reviews, setReviews] = useState(() => initialReviews.map(normalize));
+  const [reviews, setReviews] = useState<ReviewItem[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return parsed.map(normalize);
+      }
+    } catch {}
+    return [];
+  });
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
-  const [error, setError] = useState<string | null>(databaseError);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const fetching = useRef(false);
+
+  const fetchData = useCallback(async () => {
+    if (fetching.current || !databaseAvailable) return;
+    fetching.current = true;
+    try {
+      const res = await fetch("/api/weekly-reviews-list/data");
+      const data = await res.json();
+      const items = data.map(normalize);
+      setReviews(items);
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+      } catch {}
+    } catch {
+      setError("Database unavailable. Start PostgreSQL and configure DATABASE_URL.");
+    } finally {
+      fetching.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
   const selected =
     selectedId === "new"
       ? null

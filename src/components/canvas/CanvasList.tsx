@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { MaterialIcon } from "@/components/landing/icons/MaterialIcon";
 import { createCanvasAction } from "@/actions/canvas.actions";
@@ -17,10 +17,50 @@ type CanvasItem = {
 };
 
 type Props = {
-  canvases: ReadonlyArray<CanvasItem>;
+  databaseAvailable: boolean;
 };
 
-export function CanvasList({ canvases }: Props) {
+const CACHE_KEY = "ad:canvases:data";
+
+export function CanvasList({ databaseAvailable }: Props) {
+  const [canvases, setCanvases] = useState<CanvasItem[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(CACHE_KEY);
+      if (raw) {
+        return JSON.parse(raw).map((c: CanvasItem) => ({
+          ...c,
+          updatedAt: new Date(c.updatedAt),
+        }));
+      }
+    } catch {}
+    return [];
+  });
+  const fetching = useRef(false);
+
+  const fetchData = useCallback(async () => {
+    if (fetching.current || !databaseAvailable) return;
+    fetching.current = true;
+    try {
+      const res = await fetch("/api/canvases-list/data");
+      const data = await res.json();
+      const items = data.map((c: CanvasItem) => ({
+        ...c,
+        updatedAt: new Date(c.updatedAt),
+      }));
+      setCanvases(items);
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+      } catch {}
+    } catch {
+      // keep current state
+    } finally {
+      fetching.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [isCreating, setIsCreating] = useState(false);

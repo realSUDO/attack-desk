@@ -16,9 +16,10 @@ import { PostCard, POST_STATUSES, type BoardPost } from "./PostCard";
 import { PostDrawer, type PostInput } from "./PostDrawer";
 
 type Props = {
-  initialPosts: ReadonlyArray<BoardPost>;
-  databaseError?: string | null;
+  databaseAvailable: boolean;
 };
+
+const CACHE_KEY = "ad:postlab:data";
 
 function normalizePost(post: BoardPost): BoardPost {
   return { ...post, updatedAt: new Date(post.updatedAt) };
@@ -46,16 +47,48 @@ function applyPostOrder(posts: BoardPost[]): BoardPost[] {
   return sorted;
 }
 
-export function PostLabClient({ initialPosts, databaseError = null }: Props) {
+export function PostLabClient({ databaseAvailable }: Props) {
   const router = useRouter();
   const scrollRef = useRef<HTMLElement>(null);
-  const [posts, setPosts] = useState(() => applyPostOrder(initialPosts.map(normalizePost)));
+  const [posts, setPosts] = useState<BoardPost[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return applyPostOrder(parsed.map(normalizePost));
+      }
+    } catch {}
+    return [];
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [search, setSearch] = useState("");
-  const [error, setError] = useState<string | null>(databaseError);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [activePost, setActivePost] = useState<BoardPost | null>(null);
+  const fetching = useRef(false);
+
+  const fetchData = useCallback(async () => {
+    if (fetching.current || !databaseAvailable) return;
+    fetching.current = true;
+    try {
+      const res = await fetch("/api/post-lab/data");
+      const data = await res.json();
+      const items = data.map(normalizePost);
+      setPosts(applyPostOrder(items));
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+      } catch {}
+    } catch {
+      setError("Database unavailable. Start PostgreSQL and configure DATABASE_URL.");
+    } finally {
+      fetching.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
   const [overStatus, setOverStatus] = useState<BoardPost["status"] | null>(null);
   const overStatusRef = useRef<BoardPost["status"] | null>(null);
   const dragOriginStatus = useRef<BoardPost["status"] | null>(null);
@@ -216,7 +249,7 @@ export function PostLabClient({ initialPosts, databaseError = null }: Props) {
         </DndContext>
       </main>
 
-      {databaseError && <p className="border-error text-error fixed right-md bottom-md z-50 border bg-background p-sm text-sm">{databaseError}</p>}
+      {error && <p className="border-error text-error fixed right-md bottom-md z-50 border bg-background p-sm text-sm">{error}</p>}
       <PostDrawer
         key={isCreating ? "new" : (selectedId ?? "closed")}
         post={selected} mode={isCreating ? "create" : "edit"}

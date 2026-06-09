@@ -31,7 +31,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AttackDesk — A visual execution workspace",
+  title: "AttackDesk: A visual execution workspace",
   description:
     "Plan your day. Map your ideas. Track your deadlines. Ship your work. A visual execution workspace for missions, deadlines, content ideas, and freeform thinking.",
 };
@@ -44,7 +44,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${hankenGrotesk.variable} ${geist.variable} ${geistMono.variable} ${schoolbell.variable}`}
+      className={`${hankenGrotesk.variable} ${geist.variable} ${geistMono.variable} ${schoolbell.variable}`}
     >
       <head>
         {/* eslint-disable-next-line @next/next/no-page-custom-font -- App Router: external font stylesheet, not a pages-router <link> */}
