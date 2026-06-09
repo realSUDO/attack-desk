@@ -47,13 +47,13 @@ function VerifyContent() {
   }, [token, verify]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f5f0eb] px-4">
-      <div className="w-full max-w-sm rounded-xl bg-white px-8 py-10 text-center shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="w-full max-w-sm rounded-xl bg-surface px-8 py-10 text-center shadow-sm">
         {status === "verifying" && (
           <>
-            <div className="mx-auto mb-4 h-12 w-12 animate-pulse rounded-full bg-[#f28a5c]/20" />
-            <h1 className="mb-2 text-xl font-semibold text-[#1e1b15]">Verifying…</h1>
-            <p className="text-sm text-[#5e5b55]">Please wait while we verify your email.</p>
+            <div className="mx-auto mb-4 h-12 w-12 animate-pulse rounded-full bg-primary/20" />
+            <h1 className="mb-2 text-xl font-semibold text-on-surface">Verifying…</h1>
+            <p className="text-sm text-on-surface-variant">Please wait while we verify your email.</p>
           </>
         )}
 
@@ -64,10 +64,10 @@ function VerifyContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="mb-2 text-xl font-semibold text-[#1e1b15]">{message}</h1>
+            <h1 className="mb-2 text-xl font-semibold text-on-surface">{message}</h1>
             <Link
               href="/login"
-              className="mt-6 inline-block rounded-lg bg-[#f28a5c] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#e07a4a]"
+              className="mt-6 inline-block rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
             >
               Sign in
             </Link>
@@ -81,11 +81,11 @@ function VerifyContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h1 className="mb-2 text-xl font-semibold text-[#1e1b15]">Verification failed</h1>
-            <p className="mb-6 text-sm text-[#5e5b55]">{message || "Invalid or expired token."}</p>
+            <h1 className="mb-2 text-xl font-semibold text-on-surface">Verification failed</h1>
+            <p className="mb-6 text-sm text-on-surface-variant">{message || "Invalid or expired token."}</p>
             <Link
               href="/login"
-              className="text-sm font-medium text-[#f28a5c] hover:underline"
+              className="font-medium text-primary hover:underline"
             >
               Go to sign in
             </Link>
@@ -99,11 +99,11 @@ function VerifyContent() {
 export default function VerifyPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-[#f5f0eb] px-4">
-        <div className="w-full max-w-sm rounded-xl bg-white px-8 py-10 text-center shadow-sm">
-          <div className="mx-auto mb-4 h-12 w-12 animate-pulse rounded-full bg-[#f28a5c]/20" />
-          <h1 className="mb-2 text-xl font-semibold text-[#1e1b15]">Verifying…</h1>
-          <p className="text-sm text-[#5e5b55]">Please wait while we verify your email.</p>
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm rounded-xl bg-surface px-8 py-10 text-center shadow-sm">
+          <div className="mx-auto mb-4 h-12 w-12 animate-pulse rounded-full bg-primary/20" />
+          <h1 className="mb-2 text-xl font-semibold text-on-surface">Verifying…</h1>
+          <p className="text-sm text-on-surface-variant">Please wait while we verify your email.</p>
         </div>
       </div>
     }>

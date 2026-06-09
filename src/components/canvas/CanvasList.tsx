@@ -30,6 +30,7 @@ export function CanvasList({ databaseAvailable }: Props) {
   const [pending, startTransition] = useTransition();
   const [isCreating, setIsCreating] = useState(false);
   const [title, setTitle] = useState("");
+  const [showLimitModal, setShowLimitModal] = useState(false);
   const [canvases, setCanvases] = useState<CanvasItem[]>(() => {
     if (isSignedIn) {
       try {
@@ -102,6 +103,8 @@ export function CanvasList({ databaseAvailable }: Props) {
         setTitle("");
         setIsCreating(false);
         router.push(`/canvas/${canvas.id}`);
+      } else {
+        setShowLimitModal(true);
       }
       return;
     }
@@ -118,7 +121,7 @@ export function CanvasList({ databaseAvailable }: Props) {
   };
 
   return (
-    <div className="bg-background flex h-full w-full flex-col overflow-auto">
+    <><div className="bg-background flex h-full w-full flex-col overflow-auto">
       <div className="border-outline-variant border-b px-lg py-md">
         <div className="flex items-center justify-between">
           <div>
@@ -239,6 +242,48 @@ export function CanvasList({ databaseAvailable }: Props) {
         </div>
       )}
     </div>
+      {showLimitModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-md"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowLimitModal(false);
+          }}
+        >
+          <div className="border-outline-variant bg-surface w-full max-w-sm border">
+            <div className="border-outline-variant flex items-center justify-between border-b px-md py-sm">
+              <h2 className="font-headline-md text-headline-md">Canvas limit</h2>
+              <button
+                type="button"
+                onClick={() => setShowLimitModal(false)}
+                className="text-on-surface-variant hover:text-primary"
+              >
+                <MaterialIcon name="close" size={18} />
+              </button>
+            </div>
+            <div className="p-lg">
+              <p className="font-body-md text-on-surface-variant mb-md">
+                You can keep one canvas while signed out. Sign in to create unlimited canvases and save them to the cloud.
+              </p>
+              <div className="flex gap-md">
+                <button
+                  type="button"
+                  onClick={() => setShowLimitModal(false)}
+                  className="border-outline-variant hover:bg-surface-container-highest flex-1 border py-sm font-label-md uppercase transition-colors"
+                >
+                  Cancel
+                </button>
+                <Link
+                  href="/login"
+                  className="bg-primary text-on-primary flex-1 py-sm text-center font-label-md uppercase transition-colors"
+                >
+                  Sign in
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

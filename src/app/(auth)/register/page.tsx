@@ -51,20 +51,20 @@ export default function RegisterPage() {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f5f0eb] px-4">
-        <div className="w-full max-w-sm rounded-xl bg-white px-8 py-10 text-center shadow-sm">
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm rounded-xl bg-surface px-8 py-10 text-center shadow-sm">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
             <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="mb-2 text-xl font-semibold text-[#1e1b15]">Check your email</h1>
-          <p className="mb-6 text-sm text-[#5e5b55]">
+          <h1 className="mb-2 text-xl font-semibold text-on-surface">Check your email</h1>
+          <p className="mb-6 text-sm text-on-surface-variant">
             We sent a verification link to <strong>{email}</strong>. Click it to activate your account.
           </p>
           <Link
             href="/login"
-            className="text-sm font-medium text-[#f28a5c] hover:underline"
+            className="font-medium text-primary hover:underline"
           >
             Go to sign in
           </Link>
@@ -74,27 +74,27 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f5f0eb] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <Link href="/" className="text-3xl font-bold tracking-tight text-[#f28a5c]">
+          <Link href="/" className="text-3xl font-bold tracking-tight text-primary">
             AttackDesk
           </Link>
-          <p className="mt-2 text-sm text-[#5e5b55]">Create your account</p>
+          <p className="mt-2 text-sm text-on-surface-variant">Create your account</p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="rounded-xl bg-white px-8 py-10 shadow-sm"
+          className="rounded-xl bg-surface px-8 py-10 shadow-sm"
         >
           {error && (
-            <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
+            <div className="mb-4 rounded-lg bg-error/10 px-4 py-3 text-sm text-error">
               {error}
             </div>
           )}
 
           <div className="mb-5">
-            <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-[#1e1b15]">
+            <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-on-surface">
               Name
             </label>
             <input
@@ -103,16 +103,16 @@ export default function RegisterPage() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-[#d4cdc6] px-4 py-2.5 text-sm text-[#1e1b15] outline-none transition-colors focus:border-[#f28a5c] focus:ring-1 focus:ring-[#f28a5c]"
+              className="w-full rounded-lg border border-outline bg-transparent px-4 py-2.5 text-sm text-on-surface outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
               placeholder="Your name"
             />
             {fieldErrors.name && (
-              <p className="mt-1 text-xs text-red-500">{fieldErrors.name}</p>
+              <p className="mt-1 text-xs text-error">{fieldErrors.name}</p>
             )}
           </div>
 
           <div className="mb-5">
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-[#1e1b15]">
+            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-on-surface">
               Email
             </label>
             <input
@@ -121,16 +121,16 @@ export default function RegisterPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-[#d4cdc6] px-4 py-2.5 text-sm text-[#1e1b15] outline-none transition-colors focus:border-[#f28a5c] focus:ring-1 focus:ring-[#f28a5c]"
+              className="w-full rounded-lg border border-outline bg-transparent px-4 py-2.5 text-sm text-on-surface outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
               placeholder="you@example.com"
             />
             {fieldErrors.email && (
-              <p className="mt-1 text-xs text-red-500">{fieldErrors.email}</p>
+              <p className="mt-1 text-xs text-error">{fieldErrors.email}</p>
             )}
           </div>
 
           <div className="mb-6">
-            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-[#1e1b15]">
+            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-on-surface">
               Password
             </label>
             <input
@@ -140,25 +140,25 @@ export default function RegisterPage() {
               minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-[#d4cdc6] px-4 py-2.5 text-sm text-[#1e1b15] outline-none transition-colors focus:border-[#f28a5c] focus:ring-1 focus:ring-[#f28a5c]"
+              className="w-full rounded-lg border border-outline bg-transparent px-4 py-2.5 text-sm text-on-surface outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
               placeholder="At least 6 characters"
             />
             {fieldErrors.password && (
-              <p className="mt-1 text-xs text-red-500">{fieldErrors.password}</p>
+              <p className="mt-1 text-xs text-error">{fieldErrors.password}</p>
             )}
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-[#f28a5c] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#e07a4a] disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "Creating account…" : "Create account"}
           </button>
 
-          <p className="mt-5 text-center text-xs text-[#8e8a85]">
+          <p className="mt-5 text-center text-xs text-on-surface-variant">
             Already have an account?{" "}
-            <Link href="/login" className="font-medium text-[#f28a5c] hover:underline">
+            <Link href="/login" className="font-medium text-primary hover:underline">
               Sign in
             </Link>
           </p>
