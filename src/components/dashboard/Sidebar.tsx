@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useSyncExternalStore } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { MaterialIcon } from "../landing/icons/MaterialIcon";
 
@@ -28,7 +28,14 @@ function subscribeToDark(cb: () => void) {
 
 export function Sidebar() {
   const pathname = usePathname() ?? "/";
+  const router = useRouter();
   const dark = useSyncExternalStore(subscribeToDark, () => document.documentElement.classList.contains("dark"), () => true);
+
+  useEffect(() => {
+    for (const item of navItems) {
+      router.prefetch(item.href);
+    }
+  }, [router]);
 
   return (
     <aside className="bg-surface-container border-outline-variant fixed top-0 left-0 z-50 flex h-screen w-20 flex-col items-center border-r py-md">
@@ -52,6 +59,7 @@ export function Sidebar() {
             <Link
               key={label}
               href={href}
+              onMouseEnter={() => router.prefetch(href)}
               className={`flex h-16 w-full flex-col items-center justify-center gap-1 transition-colors duration-150 ${
                 active
                   ? "border-l-2 border-primary bg-primary/10 text-primary"
