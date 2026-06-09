@@ -207,18 +207,18 @@ export function PostLabClient({ databaseAvailable }: Props) {
 
   return (
     <>
-      <header className="bg-background border-outline-variant fixed top-0 right-0 left-20 z-40 flex h-16 items-center justify-between border-b px-margin-desktop">
+      <header className="bg-background border-outline-variant fixed top-0 right-0 left-0 z-40 flex h-16 items-center justify-between border-b px-margin-mobile md:left-20 md:px-margin-desktop">
         <div className="flex items-center gap-lg">
           <h1 className="font-headline-md text-primary font-bold">Content Lab</h1>
           <div className="border-outline-variant bg-surface-container flex items-center border px-md py-xs">
             <MaterialIcon name="search" size={18} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search posts..." className="font-label-md w-64 border-none bg-transparent outline-none" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="font-label-md w-28 border-none bg-transparent outline-none md:w-64" />
           </div>
         </div>
         <button type="button" onClick={() => setIsCreating(true)} className="bg-primary text-on-primary px-lg py-sm font-label-md uppercase">New Post</button>
       </header>
 
-      <main ref={scrollRef} className="board-scroll bg-background ml-20 mt-16 flex h-[calc(100vh-64px)] overflow-x-auto overflow-y-hidden p-lg">
+      <main ref={scrollRef} className="board-scroll bg-background ml-0 mt-16 flex h-[calc(100vh-64px)] overflow-x-auto overflow-y-hidden p-lg md:ml-20">
         <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd}>
           <div className="flex h-full min-w-max gap-lg pb-lg">
             {POST_STATUSES.map(({ status, title, color }) => {
@@ -265,7 +265,7 @@ function PostColumn({ status, title, color, isOver, count, children }: {
 }) {
   const { setNodeRef } = useSortable({ id: status, data: { type: "column" } });
   return (
-    <div ref={setNodeRef} className={`border-outline-variant flex h-full w-[560px] shrink-0 flex-col border transition-colors ${isOver ? "bg-surface-container" : "bg-surface-container-low"}`}>
+    <div ref={setNodeRef} className={`border-outline-variant flex h-full w-[85vw] shrink-0 flex-col border transition-colors md:w-[560px] ${isOver ? "bg-surface-container" : "bg-surface-container-low"}`}>
       <div className="bg-surface-container border-outline-variant flex items-center justify-between border-b p-md">
         <div className="flex items-center gap-sm">
           <span className="h-2 w-2 shrink-0" style={{ backgroundColor: color }} />

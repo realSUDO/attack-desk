@@ -468,7 +468,7 @@ export function CanvasPage({
   return (
     <div className="bg-background flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="ml-20 flex min-h-0 min-w-0 flex-1 flex-col">
+      <main className="ml-0 flex min-h-0 min-w-0 flex-1 flex-col md:ml-20">
         <CanvasToolbar
           tool={tool}
           onTool={setTool}

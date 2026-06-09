@@ -13,7 +13,7 @@ export default function DashboardPage() {
   return (
     <div className="bg-background min-h-screen">
       <Sidebar />
-      <main className="ml-20 flex min-h-screen flex-col">
+      <main className="ml-0 flex min-h-screen flex-col md:ml-20">
         <CommandBar sessionDate={formatSessionDate(new Date())} />
         <Suspense fallback={<div className="grid grid-cols-12 gap-gutter p-margin-mobile md:p-margin-desktop" />}>
           <DashboardStatsClient databaseAvailable={dbAvailable} />

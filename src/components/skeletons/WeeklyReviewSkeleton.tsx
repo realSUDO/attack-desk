@@ -1,6 +1,6 @@
 export function WeeklyReviewSkeleton() {
   return (
-    <div className="ml-20 flex min-h-screen flex-col">
+    <div className="ml-0 flex min-h-screen flex-col md:ml-20">
       <div className="border-outline-variant flex items-center justify-between border-b px-margin-mobile py-sm md:px-margin-desktop">
         <div className="bg-outline-variant h-5 w-44 animate-pulse rounded" />
         <div className="bg-outline-variant h-9 w-32 animate-pulse rounded" />

@@ -88,7 +88,7 @@ export function MissionDrawer({
             dueDate: dueDate ? new Date(dueDate).toISOString() : null,
           });
         }}
-        className={`bg-background border-outline-variant absolute top-0 right-0 bottom-0 flex w-[480px] max-w-full flex-col border-l transition-transform duration-200 ${
+        className={`bg-background border-outline-variant absolute top-0 right-0 bottom-0 flex w-full flex-col border-l transition-transform duration-200 md:w-[480px] ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >

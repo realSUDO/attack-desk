@@ -143,7 +143,7 @@ export function WeeklyReviewClient({
   };
 
   return (
-    <main className="ml-20 min-h-screen p-margin-mobile md:p-margin-desktop">
+    <main className="ml-0 min-h-screen p-margin-mobile md:ml-20 md:p-margin-desktop">
       <header className="border-outline-variant mb-lg flex items-center justify-between border-b pb-lg">
         <div>
           <h1 className="font-headline-lg text-headline-lg">Weekly Reviews</h1>

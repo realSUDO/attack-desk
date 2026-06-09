@@ -12,7 +12,7 @@ type Props = {
 
 export function BoardHeader({ search, onSearchChange, onCreate }: Props) {
   return (
-    <header className="border-outline-variant bg-background fixed top-0 right-0 z-40 ml-20 flex h-16 w-[calc(100%-80px)] items-center justify-between border-b px-margin-mobile md:px-margin-desktop">
+    <header className="border-outline-variant bg-background fixed top-0 right-0 z-40 ml-0 flex h-16 w-full items-center justify-between border-b px-margin-mobile md:ml-20 md:w-[calc(100%-80px)] md:px-margin-desktop">
       <div className="flex items-center gap-lg">
         <h1 className="font-headline-md text-headline-md font-extrabold text-primary">
           Mission Board
@@ -27,8 +27,8 @@ export function BoardHeader({ search, onSearchChange, onCreate }: Props) {
             type="text"
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search missions..."
-            className="font-label-md text-on-surface w-64 border-none bg-transparent placeholder:text-outline focus:ring-0"
+            placeholder="Search..."
+            className="font-label-md text-on-surface w-32 border-none bg-transparent placeholder:text-outline focus:ring-0 md:w-64"
           />
         </div>
       </div>
@@ -44,7 +44,7 @@ export function BoardHeader({ search, onSearchChange, onCreate }: Props) {
 
         <Link
           href="/dashboard"
-          className="bg-primary text-on-primary font-label-md hover:opacity-90 active:scale-95 px-lg py-xs uppercase tracking-wider transition-all"
+          className="bg-primary text-on-primary font-label-md hover:opacity-90 active:scale-95 hidden px-lg py-xs uppercase tracking-wider transition-all md:inline-block"
         >
           Open Workspace
         </Link>

@@ -48,7 +48,7 @@ export function CanvasToolbar({
 }: Props) {
   return (
     <header className="border-outline-variant bg-surface flex h-14 items-center justify-between border-b px-md">
-      <div className="flex items-center gap-xs">
+      <div className="flex items-center gap-xs overflow-x-auto">
         {TOOLS.map(({ tool: t, label, icon }) => {
           const active = tool === t;
           return (

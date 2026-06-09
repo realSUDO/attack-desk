@@ -68,7 +68,7 @@ export function DeadlineRadar({ deadlines }: Props) {
   const [today, week, upcoming] = groupDeadlines(deadlines);
 
   return (
-    <aside className="border-outline-variant bg-surface-container-low flex w-72 flex-col gap-xl border-l p-lg">
+    <aside className="border-outline-variant bg-surface-container-low hidden w-72 flex-col gap-xl border-l p-lg md:flex">
       <div className="flex flex-col gap-md">
         <div className="border-primary flex items-center gap-sm border-b pb-xs">
           <MaterialIcon name="radar" size={20} />

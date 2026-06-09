@@ -1,6 +1,6 @@
 export function BoardSkeleton() {
   return (
-    <div className="ml-20 flex h-screen flex-col">
+    <div className="ml-0 flex h-screen flex-col md:ml-20">
       <div className="border-outline-variant flex items-center justify-between border-b px-margin-mobile py-sm md:px-margin-desktop">
         <div className="bg-outline-variant h-5 w-48 animate-pulse rounded" />
         <div className="bg-outline-variant h-9 w-28 animate-pulse rounded" />

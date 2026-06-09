@@ -127,7 +127,7 @@ export function CanvasInspector({
   );
 
   return (
-    <aside className="border-outline-variant bg-surface z-30 flex w-80 flex-col border-l">
+    <aside className="border-outline-variant bg-surface z-30 hidden w-80 flex-col border-l md:flex">
       <div className="border-outline-variant border-b">
         <Link
           href="/canvas"

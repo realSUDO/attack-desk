@@ -9,7 +9,7 @@ export default async function CanvasListPage() {
   return (
     <div className="bg-background flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="ml-20 flex flex-1 flex-col">
+      <main className="ml-0 flex flex-1 flex-col md:ml-20">
         <CanvasList databaseAvailable={databaseAvailable} />
       </main>
     </div>

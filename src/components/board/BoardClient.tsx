@@ -87,7 +87,7 @@ const DroppableColumn = memo(function DroppableColumnInner({
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-80 flex-col gap-md rounded transition-colors duration-150 ${isOver ? "bg-surface-container" : ""}`}
+      className={`flex w-72 flex-col gap-md rounded transition-colors duration-150 md:w-80 ${isOver ? "bg-surface-container" : ""}`}
     >
       <div className="border-outline-variant flex items-center justify-between border-b pb-sm">
         <div className="flex items-center gap-sm">
@@ -380,7 +380,7 @@ export function BoardClient({
   return (
     <>
       <BoardHeader search={search} onSearchChange={setSearch} onCreate={() => setCreateStatus("PLANNED")} />
-      <main className="ml-20 mt-16 flex h-[calc(100vh-64px)] overflow-hidden">
+      <main className="ml-0 mt-16 flex h-[calc(100vh-64px)] overflow-hidden md:ml-20">
         <section className="bg-background flex-1 overflow-x-auto p-lg">
           {error && (
             <p className="border-error text-error mb-md border p-sm text-sm">{error}</p>
