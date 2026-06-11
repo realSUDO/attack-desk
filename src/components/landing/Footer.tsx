@@ -9,21 +9,15 @@ export function Footer() {
             AttackDesk
           </span>
           <span className="font-label-sm text-label-sm text-on-surface-variant">
-            © 2024 PRECISION SYSTEMS INC.
+            © 2026 PRECISION SYSTEMS INC.
           </span>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-10 font-label-md text-label-md text-on-surface-variant">
-          <Link href="#" className="transition-colors hover:text-primary">
-            Privacy
-          </Link>
-          <Link href="#" className="transition-colors hover:text-primary">
-            Terms
-          </Link>
-          <Link href="#" className="transition-colors hover:text-primary">
+          <Link href="https://discord.com/users/897138227570442240" target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-primary">
             Contact
           </Link>
-          <Link href="#" className="transition-colors hover:text-primary">
+          <Link href="https://x.com/sudo_core" target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-primary">
             X / Twitter
           </Link>
         </div>
